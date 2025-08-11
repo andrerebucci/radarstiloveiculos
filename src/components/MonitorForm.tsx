@@ -35,6 +35,8 @@ export const MonitorForm = ({ onAdded }: Props) => {
     const list: Monitor[] = JSON.parse(localStorage.getItem('cw_monitors_v1') || '[]');
     list.push(monitor);
     localStorage.setItem('cw_monitors_v1', JSON.stringify(list));
+    // Notify other components to refresh without full page reload
+    window.dispatchEvent(new Event('cw_monitors_updated'));
 
     setName(''); setOlx(''); setWm(''); setMl('');
     toast({ title: 'Monitoramento adicionado', description: 'Você já pode verificar novos anúncios.', duration: 3000 });

@@ -19,10 +19,27 @@ export const MonitorList = () => {
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const list: Monitor[] = JSON.parse(localStorage.getItem(MONITOR_KEY) || '[]');
-    setMonitors(list);
-    const lm: ListingMap = JSON.parse(localStorage.getItem(LISTINGS_KEY) || '{}');
-    setListingsByMonitor(lm);
+    const load = () => {
+      const list: Monitor[] = JSON.parse(localStorage.getItem(MONITOR_KEY) || '[]');
+      setMonitors(list);
+      const lm: ListingMap = JSON.parse(localStorage.getItem(LISTINGS_KEY) || '{}');
+      setListingsByMonitor(lm);
+    };
+
+    load();
+
+    const onMonitorsUpdated = () => load();
+    window.addEventListener('cw_monitors_updated', onMonitorsUpdated as any);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === MONITOR_KEY || e.key === LISTINGS_KEY) load();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('cw_monitors_updated', onMonitorsUpdated as any);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const aggregate = useMemo(() => {
