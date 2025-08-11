@@ -68,12 +68,43 @@ export class FirecrawlService {
       console.log('Making crawl request to Firecrawl API');
       this.ensureClient();
 
-      const crawlResponse = await this.firecrawlApp!.crawlUrl(url, {
-        limit: 10,
+      // 1) Try a lightweight single-page scrape first (usually enough for search pages)
+      try {
+        const scrapeResp: any = await (this.firecrawlApp as any).scrapeUrl(url, {
+          formats: ['html', 'markdown'],
+        });
+        if (scrapeResp?.success && scrapeResp?.data && (scrapeResp.data.html || scrapeResp.data.markdown)) {
+          const adapted: CrawlStatusResponse = {
+            success: true,
+            status: 'completed',
+            completed: 1,
+            total: 1,
+            creditsUsed: (scrapeResp as any)?.creditsUsed,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+            data: [
+              {
+                url,
+                html: scrapeResp.data.html,
+                markdown: scrapeResp.data.markdown,
+                ...scrapeResp.data,
+              },
+            ],
+          };
+          console.log('Scrape successful:', adapted);
+          return { success: true, data: adapted };
+        }
+      } catch (e) {
+        // If scrape fails (e.g., rate limit), we'll try crawl next
+        console.warn('Scrape failed, attempting crawl as fallback:', e);
+      }
+
+      // 2) Fallback to small crawl (kept tight to reduce rate-limit issues)
+      const crawlResponse = (await this.firecrawlApp!.crawlUrl(url, {
+        limit: 5,
         scrapeOptions: {
           formats: ['html', 'markdown'],
         },
-      }) as CrawlResponse;
+      })) as CrawlResponse;
 
       if (!('success' in crawlResponse) || !crawlResponse.success) {
         const err = (crawlResponse as ErrorResponse).error || 'Failed to crawl website';
