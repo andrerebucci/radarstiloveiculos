@@ -67,40 +67,73 @@ const runCheck = async (m: Monitor) => {
 
       let dbg: { lastHtmlBytes?: number; lastItemCount?: number; lastError?: string; lastUrl?: string } = {};
 
-for (const u of m.urls) {
+      for (const u of m.urls) {
         if (hasKey) {
-          const res = await FirecrawlService.crawlWebsite(u.url);
-          if (!res.success || !res.data) {
-            const errText = (!res.success && (res as any).error) ? String((res as any).error) : 'Falha desconhecida';
-            dbg = { ...dbg, lastError: errText, lastUrl: u.url };
-            if (/429/.test(errText)) {
-              toast({ title: 'Muitos pedidos (429)', description: 'Aguarde 1-2 minutos e tente novamente.', duration: 4000, variant: 'destructive' as any });
-            } else {
-              toast({ title: 'Erro ao verificar', description: errText, duration: 3000, variant: 'destructive' as any });
-            }
-            continue;
-          }
-          for (const page of res.data.data) {
-            const raw = (page.html || page.markdown || (page as any).content || (page as any).text || '') as string;
-            const items = extractListingsFromHtml(raw, u.site as SiteKey);
-            dbg = {
-              lastHtmlBytes: raw ? raw.length : 0,
-              lastItemCount: items.length,
-              lastError: undefined,
-              lastUrl: (page as any).url || u.url,
-            };
-            for (const it of items) {
-              if (!known.has(it.url)) {
-                found.push({
-                  id: it.url,
-                  url: it.url,
-                  site: u.site,
-                  firstSeenAt: now,
-                  lastSeenAt: now,
-                  priceText: it.priceText,
-                });
-                known.add(it.url);
+          let handledByFirecrawl = false;
+          try {
+            const res = await FirecrawlService.crawlWebsite(u.url);
+            if (res.success && res.data && (res.data.data?.length ?? 0) > 0) {
+              for (const page of res.data.data) {
+                const raw = (page.html || page.markdown || (page as any).content || (page as any).text || '') as string;
+                const items = extractListingsFromHtml(raw, u.site as SiteKey);
+                dbg = {
+                  lastHtmlBytes: raw ? raw.length : 0,
+                  lastItemCount: items.length,
+                  lastError: undefined,
+                  lastUrl: (page as any).url || u.url,
+                };
+                for (const it of items) {
+                  if (!known.has(it.url)) {
+                    found.push({
+                      id: it.url,
+                      url: it.url,
+                      site: u.site,
+                      firstSeenAt: now,
+                      lastSeenAt: now,
+                      priceText: it.priceText,
+                    });
+                    known.add(it.url);
+                  }
+                }
               }
+              handledByFirecrawl = true;
+            } else {
+              const errText = !res.success ? String((res as any).error || 'Falha desconhecida') : 'Sem páginas retornadas';
+              dbg = { ...dbg, lastError: errText, lastUrl: u.url };
+            }
+          } catch (e: any) {
+            const errText = e?.message || 'Erro desconhecido';
+            dbg = { ...dbg, lastError: errText, lastUrl: u.url };
+          }
+
+          if (!handledByFirecrawl) {
+            try {
+              const { html, source } = await ClientScraper.fetchHtml(u.url);
+              const raw = html || '';
+              const items = extractListingsFromHtml(raw, u.site as SiteKey);
+              dbg = {
+                lastHtmlBytes: raw ? raw.length : 0,
+                lastItemCount: items.length,
+                lastError: undefined,
+                lastUrl: `${u.url} (${source})`,
+              };
+              for (const it of items) {
+                if (!known.has(it.url)) {
+                  found.push({
+                    id: it.url,
+                    url: it.url,
+                    site: u.site,
+                    firstSeenAt: now,
+                    lastSeenAt: now,
+                    priceText: it.priceText,
+                  });
+                  known.add(it.url);
+                }
+              }
+            } catch (err: any) {
+              const msg = err?.message || 'Falha ao baixar HTML';
+              dbg = { ...dbg, lastError: msg, lastUrl: u.url };
+              toast({ title: 'Erro ao verificar', description: msg, duration: 3000, variant: 'destructive' as any });
             }
           }
         } else {

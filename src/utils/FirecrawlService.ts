@@ -61,17 +61,18 @@ export class FirecrawlService {
   private static getScrapeOptions(url: string): any {
     try {
       const host = new URL(url).hostname;
-      let waitFor: string | number | undefined;
-      if (host.includes('olx.com.br')) waitFor = 'a[href*="/d/"], a[href*="/item/"]';
-      else if (host.includes('webmotors.com.br')) waitFor = 'a[href*="/carro/"], a[href*="/carros/"]';
-      else if (host.includes('mercadolivre.com.br')) waitFor = 'a[href*="MLB"], a[href*="/item/"]';
+      let waitForSelector: string | undefined;
+      if (host.includes('olx.com.br')) waitForSelector = 'a[href*="/d/"], a[href*="/item/"]';
+      else if (host.includes('webmotors.com.br')) waitForSelector = 'a[href*="/carro/"], a[href*="/carros/"]';
+      else if (host.includes('mercadolivre.com.br')) waitForSelector = 'a[href*="MLB"], a[href*="/item/"]';
 
       return {
         formats: ['html', 'markdown'],
-        ...(waitFor ? { waitFor } : {}),
+        ...(waitForSelector ? { waitForSelector } : {}),
+        waitFor: 4000,
       };
     } catch {
-      return { formats: ['html', 'markdown'] };
+      return { formats: ['html', 'markdown'], waitFor: 3000 };
     }
   }
 
@@ -116,9 +117,7 @@ export class FirecrawlService {
       // 2) Fallback to small crawl (kept tight to reduce rate-limit issues)
       const crawlResponse = (await this.firecrawlApp!.crawlUrl(url, {
         limit: 5,
-        scrapeOptions: {
-          formats: ['html', 'markdown'],
-        },
+        scrapeOptions: this.getScrapeOptions(url),
       })) as CrawlResponse;
 
       if (!('success' in crawlResponse) || !crawlResponse.success) {
