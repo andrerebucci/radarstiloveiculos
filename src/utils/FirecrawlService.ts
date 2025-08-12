@@ -58,6 +58,23 @@ export class FirecrawlService {
     if (!this.firecrawlApp) this.firecrawlApp = new FirecrawlApp({ apiKey });
   }
 
+  private static getScrapeOptions(url: string): any {
+    try {
+      const host = new URL(url).hostname;
+      let waitFor: string | number | undefined;
+      if (host.includes('olx.com.br')) waitFor = 'a[href*="/d/"], a[href*="/item/"]';
+      else if (host.includes('webmotors.com.br')) waitFor = 'a[href*="/carro/"], a[href*="/carros/"]';
+      else if (host.includes('mercadolivre.com.br')) waitFor = 'a[href*="MLB"], a[href*="/item/"]';
+
+      return {
+        formats: ['html', 'markdown'],
+        ...(waitFor ? { waitFor } : {}),
+      };
+    } catch {
+      return { formats: ['html', 'markdown'] };
+    }
+  }
+
   static async crawlWebsite(url: string): Promise<{ success: boolean; error?: string; data?: CrawlStatusResponse }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -70,9 +87,7 @@ export class FirecrawlService {
 
       // 1) Try a lightweight single-page scrape first (usually enough for search pages)
       try {
-        const scrapeResp: any = await (this.firecrawlApp as any).scrapeUrl(url, {
-          formats: ['html', 'markdown'],
-        });
+        const scrapeResp: any = await (this.firecrawlApp as any).scrapeUrl(url, this.getScrapeOptions(url));
         if (scrapeResp?.success && scrapeResp?.data && (scrapeResp.data.html || scrapeResp.data.markdown)) {
           const adapted: CrawlStatusResponse = {
             success: true,

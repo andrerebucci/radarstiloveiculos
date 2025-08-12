@@ -18,6 +18,10 @@ export const MonitorList = () => {
   const [listingsByMonitor, setListingsByMonitor] = useState<ListingMap>({});
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
+  type DebugInfo = { lastHtmlBytes?: number; lastItemCount?: number; lastError?: string; lastUrl?: string };
+  const [debugOpen, setDebugOpen] = useState<Record<string, boolean>>({});
+  const [debugInfo, setDebugInfo] = useState<Record<string, DebugInfo>>({});
+
   useEffect(() => {
     const load = () => {
       const list: Monitor[] = JSON.parse(localStorage.getItem(MONITOR_KEY) || '[]');
@@ -60,12 +64,29 @@ export const MonitorList = () => {
       const now = new Date().toISOString();
       let found: Listing[] = [...stored];
 
+      let dbg: { lastHtmlBytes?: number; lastItemCount?: number; lastError?: string; lastUrl?: string } = {};
+
       for (const u of m.urls) {
         const res = await FirecrawlService.crawlWebsite(u.url);
-        if (!res.success || !res.data) continue;
+        if (!res.success || !res.data) {
+          const errText = (!res.success && (res as any).error) ? String((res as any).error) : 'Falha desconhecida';
+          dbg = { ...dbg, lastError: errText, lastUrl: u.url };
+          if (/429/.test(errText)) {
+            toast({ title: 'Muitos pedidos (429)', description: 'Aguarde 1-2 minutos e tente novamente.', duration: 4000, variant: 'destructive' as any });
+          } else {
+            toast({ title: 'Erro ao verificar', description: errText, duration: 3000, variant: 'destructive' as any });
+          }
+          continue;
+        }
         for (const page of res.data.data) {
-          const html = page.html || '';
-          const items = extractListingsFromHtml(html, u.site as SiteKey);
+          const raw = (page.html || page.markdown || (page as any).content || (page as any).text || '') as string;
+          const items = extractListingsFromHtml(raw, u.site as SiteKey);
+          dbg = {
+            lastHtmlBytes: raw ? raw.length : 0,
+            lastItemCount: items.length,
+            lastError: undefined,
+            lastUrl: (page as any).url || u.url,
+          };
           for (const it of items) {
             if (!known.has(it.url)) {
               found.push({
@@ -85,7 +106,14 @@ export const MonitorList = () => {
       const updatedMap: ListingMap = { ...listingsByMonitor, [m.id]: found };
       setListingsByMonitor(updatedMap);
       localStorage.setItem(LISTINGS_KEY, JSON.stringify(updatedMap));
-      toast({ title: 'Verificação concluída', description: `${found.length - (stored.length)} novos anúncios.`, duration: 3000 });
+      setDebugInfo((prev) => ({ ...prev, [m.id]: dbg }));
+
+      const newCount = found.length - stored.length;
+      if (newCount > 0) {
+        toast({ title: 'Verificação concluída', description: `${newCount} novos anúncios.`, duration: 3000 });
+      } else {
+        toast({ title: 'Nenhum novo anúncio', description: 'Nada novo foi encontrado desta vez.', duration: 2500 });
+      }
     } catch (e) {
       console.error(e);
       toast({ title: 'Erro ao verificar', description: 'Tente novamente em instantes.', duration: 3000, variant: 'destructive' as any });
@@ -113,6 +141,9 @@ export const MonitorList = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>{m.name}</span>
                 <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setDebugOpen((p) => ({ ...p, [m.id]: !p[m.id] }))}>
+                    {debugOpen[m.id] ? 'Ocultar depuração' : 'Depuração'}
+                  </Button>
                   <Button variant="secondary" onClick={() => removeMonitor(m.id)}>Remover</Button>
                   <Button variant="brand" onClick={() => runCheck(m)} disabled={loadingId === m.id}>
                     {loadingId === m.id ? 'Verificando...' : 'Verificar agora'}
@@ -125,6 +156,14 @@ export const MonitorList = () => {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">{new Date(m.createdAt).toLocaleString()}</p>
+              {debugOpen[m.id] && (
+                <div className="mt-3 text-xs text-muted-foreground space-y-1">
+                  <div>Última URL: {debugInfo[m.id]?.lastUrl || '-'}</div>
+                  <div>Tamanho do conteúdo: {debugInfo[m.id]?.lastHtmlBytes ?? 0} bytes</div>
+                  <div>Itens detectados: {debugInfo[m.id]?.lastItemCount ?? 0}</div>
+                  <div>Erro: {debugInfo[m.id]?.lastError || '-'}</div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

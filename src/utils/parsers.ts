@@ -37,7 +37,7 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
 
     // Site-specific URL filters to keep only item pages
     const keep = (href: string) => {
-      if (site === 'olx') return /\b\/d\//i.test(href);
+      if (site === 'olx') return /\/(d|item)\//i.test(href);
       if (site === 'webmotors') return /\/(carro|carros)\//i.test(href);
       if (site === 'mercadolivre') return /\bMLB\d+/i.test(href) || /\/item\//i.test(href);
       return true;
@@ -70,7 +70,7 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
         priceText: price || undefined,
       });
       seen.add(url);
-      if (results.length >= 20) break; // limit to reduce noise
+      if (results.length >= 10) break; // limit to reduce noise
     }
 
     return results;
@@ -91,7 +91,7 @@ function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
   const matches = html.match(pattern) || [];
   const unique = Array.from(new Set(matches));
 
-  const listings: ParsedListing[] = unique.slice(0, 20).map((u) => ({ url: normalizeUrl(u) }));
+  const listings: ParsedListing[] = unique.slice(0, 10).map((u) => ({ url: normalizeUrl(u) }));
 
   // Try to grab some nearby price hints
   listings.forEach((item) => {
