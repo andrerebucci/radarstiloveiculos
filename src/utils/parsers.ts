@@ -38,7 +38,7 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
     // Site-specific URL filters to keep only item pages
     const keep = (href: string) => {
       if (site === 'olx') return /\/(d|item)\//i.test(href);
-      if (site === 'webmotors') return /\/(carro|carros)\//i.test(href);
+      if (site === 'webmotors') return /\/comprar\//i.test(href) && /\d{8,}/i.test(href);
       if (site === 'mercadolivre') return /\bMLB\d+/i.test(href) || /\/item\//i.test(href);
       return true;
     };
@@ -85,7 +85,7 @@ function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
     site === 'olx'
       ? /https?:\/\/(?:[\w.-]+\.)?olx\.com\.br\/d\/[^"'\s)]+/gi
       : site === 'webmotors'
-      ? /https?:\/\/(?:www\.)?webmotors\.com\.br\/(?:[^"'\s)]+\/(?:carro|carros)\/[^"'\s)]+)/gi
+      ? /https?:\/\/(?:www\.)?webmotors\.com\.br\/comprar\/[^"'\s)]+\/\d{8,}/gi
       : /https?:\/\/(?:www\.)?mercadolivre\.com\.br[^"'\s)]+MLB\d+[^"'\s)]*/gi;
 
   const matches = html.match(pattern) || [];

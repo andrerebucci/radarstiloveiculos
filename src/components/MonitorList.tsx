@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { FirecrawlService } from '@/utils/FirecrawlService';
 import { ClientScraper } from '@/utils/ClientScraper';
 import { extractListingsFromHtml } from '@/utils/parsers';
+import { CarDetailsTable } from '@/components/CarDetailsTable';
 import type { Listing, Monitor, SiteKey } from '@/types/monitor';
 
 const MONITOR_KEY = 'cw_monitors_v1';
@@ -268,6 +269,10 @@ const runCheck = async (m: Monitor) => {
           </div>
         </CardContent>
       </Card>
+
+      {aggregate.length > 0 && (
+        <CarDetailsTable urls={aggregate.map(l => l.url)} />
+      )}
     </div>
   );
 };

@@ -59,21 +59,9 @@ export class FirecrawlService {
   }
 
   private static getScrapeOptions(url: string): any {
-    try {
-      const host = new URL(url).hostname;
-      let waitForSelector: string | undefined;
-      if (host.includes('olx.com.br')) waitForSelector = 'a[href*="/d/"], a[href*="/item/"]';
-      else if (host.includes('webmotors.com.br')) waitForSelector = 'a[href*="/carro/"], a[href*="/carros/"]';
-      else if (host.includes('mercadolivre.com.br')) waitForSelector = 'a[href*="MLB"], a[href*="/item/"]';
-
-      return {
-        formats: ['html', 'markdown'],
-        ...(waitForSelector ? { waitForSelector } : {}),
-        waitFor: 4000,
-      };
-    } catch {
-      return { formats: ['html', 'markdown'], waitFor: 3000 };
-    }
+    return {
+      formats: ['html', 'markdown'],
+    };
   }
 
   static async crawlWebsite(url: string): Promise<{ success: boolean; error?: string; data?: CrawlStatusResponse }> {
