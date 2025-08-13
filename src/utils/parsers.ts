@@ -1,5 +1,7 @@
 export type SiteKey = 'olx' | 'webmotors' | 'mercadolivre';
 
+import { WebmotorsParser } from './WebmotorsParser';
+
 export interface ParsedListing {
   url: string;
   title?: string;
@@ -30,7 +32,8 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
     if (site === 'olx') {
       anchors = Array.from(doc.querySelectorAll('a[href*="olx.com.br"]')) as HTMLAnchorElement[];
     } else if (site === 'webmotors') {
-      anchors = Array.from(doc.querySelectorAll('a[href*="webmotors.com.br"]')) as HTMLAnchorElement[];
+      // Buscar links mais específicos da Webmotors
+      anchors = Array.from(doc.querySelectorAll('a[href*="webmotors.com.br/comprar"], a[href*="/comprar/"], a[data-testid*="vehicle"], a[class*="vehicle"]')) as HTMLAnchorElement[];
     } else if (site === 'mercadolivre') {
       anchors = Array.from(doc.querySelectorAll('a[href*="mercadolivre.com.br"]')) as HTMLAnchorElement[];
     }
@@ -80,17 +83,24 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
 }
 
 function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
-  // Narrow patterns for item-like URLs
-  const pattern =
-    site === 'olx'
-      ? /https?:\/\/(?:[\w.-]+\.)?olx\.com\.br\/d\/[^"'\s)]+/gi
-      : site === 'webmotors'
-      ? /https?:\/\/(?:www\.)?webmotors\.com\.br\/comprar\/[^"'\s)]+\/\d{8,}/gi
-      : /https?:\/\/(?:www\.)?mercadolivre\.com\.br[^"'\s)]+MLB\d+[^"'\s)]*/gi;
+  // Para Webmotors, usar o parser especializado
+  if (site === 'webmotors') {
+    WebmotorsParser.debugExtraction(html);
+    const webmotorsListings = WebmotorsParser.extractListings(html);
+    return webmotorsListings.map(w => ({
+      url: w.url,
+      title: w.title,
+      priceText: w.price,
+    }));
+  }
+
+  // Padrões originais para outros sites
+  const pattern = site === 'olx'
+    ? /https?:\/\/(?:[\w.-]+\.)?olx\.com\.br\/d\/[^"'\s)]+/gi
+    : /https?:\/\/(?:www\.)?mercadolivre\.com\.br[^"'\s)]+MLB\d+[^"'\s)]*/gi;
 
   const matches = html.match(pattern) || [];
   const unique = Array.from(new Set(matches));
-
   const listings: ParsedListing[] = unique.slice(0, 10).map((u) => ({ url: normalizeUrl(u) }));
 
   // Try to grab some nearby price hints

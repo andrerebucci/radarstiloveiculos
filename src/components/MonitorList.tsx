@@ -55,10 +55,9 @@ export const MonitorList = () => {
   }, [listingsByMonitor]);
 
 const runCheck = async (m: Monitor) => {
-    const hasKey = !!FirecrawlService.getApiKey();
-    if (!hasKey) {
-      toast({ title: 'Modo sem Firecrawl', description: 'Usando proxy público para baixar HTML.', duration: 3000 });
-    }
+    // Forçar uso do ClientScraper temporariamente (rate limit do Firecrawl)
+    const hasKey = false; // !!FirecrawlService.getApiKey();
+    toast({ title: 'Modo proxy público', description: 'Usando proxies para baixar HTML.', duration: 3000 });
     setLoadingId(m.id);
     try {
       const stored: Listing[] = listingsByMonitor[m.id] || [];
