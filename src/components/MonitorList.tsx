@@ -1,311 +1,254 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useToast } from '@/components/ui/use-toast';
-import { FirecrawlService } from '@/utils/FirecrawlService';
-import { ClientScraper } from '@/utils/ClientScraper';
-import { extractListingsFromHtml } from '@/utils/parsers';
-import { CarDetailsTable } from '@/components/CarDetailsTable';
-import type { Listing, Monitor, SiteKey } from '@/types/monitor';
+import { Monitor, SiteKey } from '../types/monitor';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { ExternalLink, Play, Trash2, AlertCircle, CheckCircle, Clock, Bug } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { ClientScraper } from '../utils/ClientScraper';
+import { extractListingsFromHtml, ParsedListing } from '../utils/parsers';
+import { differenceInDays, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 
-const MONITOR_KEY = 'cw_monitors_v1';
-const LISTINGS_KEY = 'cw_listings_v1';
+const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (id: string) => void }) => {
+  const [checkingMonitor, setCheckingMonitor] = useState<string | null>(null);
+  const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
-type ListingMap = Record<string, Listing[]>; // monitorId -> listings
+  const addDebugLog = (message: string) => {
+    setDebugLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
 
-export const MonitorList = () => {
-  const { toast } = useToast();
-  const [monitors, setMonitors] = useState<Monitor[]>([]);
-  const [listingsByMonitor, setListingsByMonitor] = useState<ListingMap>({});
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-
-  type DebugInfo = { lastHtmlBytes?: number; lastItemCount?: number; lastError?: string; lastUrl?: string };
-  const [debugOpen, setDebugOpen] = useState<Record<string, boolean>>({});
-  const [debugInfo, setDebugInfo] = useState<Record<string, DebugInfo>>({});
-
-  useEffect(() => {
-    const load = () => {
-      const list: Monitor[] = JSON.parse(localStorage.getItem(MONITOR_KEY) || '[]');
-      setMonitors(list);
-      const lm: ListingMap = JSON.parse(localStorage.getItem(LISTINGS_KEY) || '{}');
-      setListingsByMonitor(lm);
+  const checkMonitor = async (monitor: Monitor) => {
+    setCheckingMonitor(monitor.id);
+    setDebugLogs([]);
+    const resultsBySite: Record<SiteKey, ParsedListing[]> = {
+      olx: [],
+      webmotors: [],
+      mercadolivre: []
     };
-
-    load();
-
-    const onMonitorsUpdated = () => load();
-    window.addEventListener('cw_monitors_updated', onMonitorsUpdated as any);
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === MONITOR_KEY || e.key === LISTINGS_KEY) load();
-    };
-    window.addEventListener('storage', onStorage);
-
-    return () => {
-      window.removeEventListener('cw_monitors_updated', onMonitorsUpdated as any);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
-
-  const aggregate = useMemo(() => {
-    return Object.entries(listingsByMonitor).flatMap(([monitorId, arr]) =>
-      arr.map((l) => ({ ...l, monitorId }))
-    ).sort((a, b) => b.firstSeenAt.localeCompare(a.firstSeenAt));
-  }, [listingsByMonitor]);
-
-const runCheck = async (m: Monitor) => {
-    // Forçar uso do ClientScraper temporariamente (rate limit do Firecrawl)
-    const hasKey = false; // !!FirecrawlService.getApiKey();
-    toast({ title: 'Modo proxy público', description: 'Usando proxies para baixar HTML.', duration: 3000 });
-    setLoadingId(m.id);
+    
     try {
-      const stored: Listing[] = listingsByMonitor[m.id] || [];
-      const known = new Set(stored.map((s) => s.url));
-      const now = new Date().toISOString();
-      let found: Listing[] = [...stored];
-
-      let dbg: { lastHtmlBytes?: number; lastItemCount?: number; lastError?: string; lastUrl?: string } = {};
-
-      for (const u of m.urls) {
-        if (hasKey) {
-          let handledByFirecrawl = false;
-          try {
-            const res = await FirecrawlService.crawlWebsite(u.url);
-            if (res.success && res.data && (res.data.data?.length ?? 0) > 0) {
-              for (const page of res.data.data) {
-                const raw = (page.html || page.markdown || (page as any).content || (page as any).text || '') as string;
-                const items = extractListingsFromHtml(raw, u.site as SiteKey);
-                dbg = {
-                  lastHtmlBytes: raw ? raw.length : 0,
-                  lastItemCount: items.length,
-                  lastError: undefined,
-                  lastUrl: (page as any).url || u.url,
-                };
-                for (const it of items) {
-                  if (!known.has(it.url)) {
-                    found.push({
-                      id: it.url,
-                      url: it.url,
-                      site: u.site,
-                      firstSeenAt: now,
-                      lastSeenAt: now,
-                      priceText: it.price || it.mileage || 'N/A',
-                    });
-                    known.add(it.url);
-                  }
-                }
-              }
-              handledByFirecrawl = true;
-            } else {
-              const errText = !res.success ? String((res as any).error || 'Falha desconhecida') : 'Sem páginas retornadas';
-              dbg = { ...dbg, lastError: errText, lastUrl: u.url };
-            }
-          } catch (e: any) {
-            const errText = e?.message || 'Erro desconhecido';
-            dbg = { ...dbg, lastError: errText, lastUrl: u.url };
-          }
-
-          if (!handledByFirecrawl) {
-            try {
-              const { html, source } = await ClientScraper.fetchHtml(u.url);
-              const raw = html || '';
-              const items = extractListingsFromHtml(raw, u.site as SiteKey);
-              dbg = {
-                lastHtmlBytes: raw ? raw.length : 0,
-                lastItemCount: items.length,
-                lastError: undefined,
-                lastUrl: `${u.url} (${source})`,
-              };
-              for (const it of items) {
-                if (!known.has(it.url)) {
-                  found.push({
-                    id: it.url,
-                    url: it.url,
-                    site: u.site,
-                    firstSeenAt: now,
-                    lastSeenAt: now,
-                    priceText: it.price || it.mileage || 'N/A',
-                  });
-                  known.add(it.url);
-                }
-              }
-            } catch (err: any) {
-              const msg = err?.message || 'Falha ao baixar HTML';
-              dbg = { ...dbg, lastError: msg, lastUrl: u.url };
-              toast({ title: 'Erro ao verificar', description: msg, duration: 3000, variant: 'destructive' as any });
-            }
-          }
-        } else {
-          try {
-            const { html, source } = await ClientScraper.fetchHtml(u.url);
-            const raw = html || '';
-            const items = extractListingsFromHtml(raw, u.site as SiteKey);
-            dbg = {
-              lastHtmlBytes: raw ? raw.length : 0,
-              lastItemCount: items.length,
-              lastError: undefined,
-              lastUrl: `${u.url} (${source})`,
-            };
-            for (const it of items) {
-              if (!known.has(it.url)) {
-                found.push({
-                  id: it.url,
-                  url: it.url,
-                  site: u.site,
-                  firstSeenAt: now,
-                  lastSeenAt: now,
-                  priceText: it.price || it.mileage || 'N/A',
-                });
-                known.add(it.url);
-              }
-            }
-          } catch (err: any) {
-            const msg = err?.message || 'Falha ao baixar HTML';
-            dbg = { ...dbg, lastError: msg, lastUrl: u.url };
-            toast({ title: 'Erro ao verificar', description: msg, duration: 3000, variant: 'destructive' as any });
-          }
+      addDebugLog('Iniciando verificação...');
+      toast.info('🔍 Verificando anúncios...', { 
+        description: 'Usando proxies para obter resultados' 
+      });
+      
+      for (const url of monitor.urls) {
+        try {
+          addDebugLog(`Processando: ${url}`);
+          
+          // Detect site type from URL
+          let site: SiteKey = 'olx';
+          if (url.url.includes('webmotors')) site = 'webmotors';
+          else if (url.url.includes('mercadolivre')) site = 'mercadolivre';
+          
+          addDebugLog(`Site detectado: ${site}`);
+          toast.info(`📡 Buscando em ${site}...`);
+          
+          const { html, source } = await ClientScraper.fetchHtml(url.url);
+          addDebugLog(`HTML obtido via ${source}: ${html.length} caracteres`);
+          
+          const listings = extractListingsFromHtml(html, site);
+          resultsBySite[site] = listings;
+          
+          addDebugLog(`${listings.length} anúncios encontrados em ${site}`);
+          toast.success(`✅ ${site}: ${listings.length} anúncios`);
+          
+        } catch (error) {
+          const errorMsg = `Erro ao processar ${url.url}: ${error}`;
+          addDebugLog(errorMsg);
+          toast.error(`❌ Erro em ${url.url.includes('webmotors') ? 'webmotors' : url.url.includes('mercadolivre') ? 'mercadolivre' : 'olx'}`);
         }
       }
-
-      const updatedMap: ListingMap = { ...listingsByMonitor, [m.id]: found };
-      setListingsByMonitor(updatedMap);
-      localStorage.setItem(LISTINGS_KEY, JSON.stringify(updatedMap));
-      setDebugInfo((prev) => ({ ...prev, [m.id]: dbg }));
-
-      const newCount = found.length - stored.length;
-      if (newCount > 0) {
-        toast({ title: 'Verificação concluída', description: `${newCount} novos anúncios.`, duration: 3000 });
+      
+      setLastResults(prev => ({ ...prev, [monitor.id]: resultsBySite }));
+      
+      const totalResults = Object.values(resultsBySite).reduce((acc, listings) => acc + listings.length, 0);
+      
+      if (totalResults > 0) {
+        addDebugLog(`Verificação concluída: ${totalResults} anúncios total`);
+        toast.success(`🎉 ${totalResults} anúncios encontrados!`);
       } else {
-        toast({ title: 'Nenhum novo anúncio', description: 'Nada novo foi encontrado desta vez.', duration: 2500 });
+        addDebugLog('Verificação concluída: nenhum anúncio encontrado');
+        toast.warning('⚠️ Nenhum anúncio encontrado');
       }
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Erro ao verificar', description: 'Tente novamente em instantes.', duration: 3000, variant: 'destructive' as any });
+      
+    } catch (error) {
+      const errorMsg = `Erro geral: ${error}`;
+      addDebugLog(errorMsg);
+      toast.error('❌ Erro ao verificar anúncios');
     } finally {
-      setLoadingId(null);
+      setCheckingMonitor(null);
     }
   };
 
-  const removeMonitor = (id: string) => {
-    const list = monitors.filter(m => m.id !== id);
-    setMonitors(list);
-    localStorage.setItem(MONITOR_KEY, JSON.stringify(list));
-    const lm: ListingMap = { ...listingsByMonitor };
-    delete lm[id];
-    setListingsByMonitor(lm);
-    localStorage.setItem(LISTINGS_KEY, JSON.stringify(lm));
-  };
+  if (monitors.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Nenhum monitor configurado</h3>
+          <p className="text-muted-foreground mb-4">
+            Crie seu primeiro monitor para começar a rastrear anúncios de veículos
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2">
-        {monitors.map((m) => (
-          <Card key={m.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>{m.name}</span>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setDebugOpen((p) => ({ ...p, [m.id]: !p[m.id] }))}>
-                    {debugOpen[m.id] ? 'Ocultar depuração' : 'Depuração'}
-                  </Button>
-                  <Button variant="secondary" onClick={() => removeMonitor(m.id)}>Remover</Button>
-                  <Button variant="brand" onClick={() => runCheck(m)} disabled={loadingId === m.id}>
-                    {loadingId === m.id ? 'Verificando...' : 'Verificar agora'}
-                  </Button>
+      {monitors.map((monitor) => (
+        <Card key={monitor.id}>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>{monitor.name}</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => checkMonitor(monitor)}
+                  disabled={checkingMonitor === monitor.id}
+                  className="flex items-center gap-2"
+                >
+                  {checkingMonitor === monitor.id ? (
+                    <>
+                      <Clock className="h-4 w-4 animate-spin" />
+                      Verificando...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4" />
+                      Verificar agora
+                    </>
+                  )}
+                </Button>
+                
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Bug className="h-4 w-4" />
+                      Debug
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="w-[600px] sm:w-[540px]">
+                    <SheetHeader>
+                      <SheetTitle>Logs de Depuração</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-6 space-y-2 h-[calc(100vh-120px)] overflow-y-auto">
+                      {debugLogs.length === 0 ? (
+                        <p className="text-muted-foreground">Nenhum log ainda. Execute uma verificação para ver os logs.</p>
+                      ) : (
+                        debugLogs.map((log, index) => (
+                          <div key={index} className="text-xs font-mono bg-muted p-2 rounded">
+                            {log}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </SheetContent>
+                </Sheet>
+                
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => onDelete(monitor.id)}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Deletar
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <div className="space-y-2 mb-4">
+              {monitor.urls.map((url, index) => (
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline">
+                    {url.url.includes('olx') && '🟢 OLX'}
+                    {url.url.includes('webmotors') && '🔵 Webmotors'}
+                    {url.url.includes('mercadolivre') && '🟡 Mercado Livre'}
+                  </Badge>
+                  <a 
+                    href={url.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 truncate"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {url.url.length > 60 ? `${url.url.substring(0, 60)}...` : url.url}
+                  </a>
                 </div>
-              </CardTitle>
-              <CardDescription>
-                {m.urls.map(u => u.site).join(' • ')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{new Date(m.createdAt).toLocaleString()}</p>
-              {debugOpen[m.id] && (
-                <div className="mt-3 text-xs text-muted-foreground space-y-1">
-                  <div>Última URL: {debugInfo[m.id]?.lastUrl || '-'}</div>
-                  <div>Tamanho do conteúdo: {debugInfo[m.id]?.lastHtmlBytes ?? 0} bytes</div>
-                  <div>Itens detectados: {debugInfo[m.id]?.lastItemCount ?? 0}</div>
-                  <div>Erro: {debugInfo[m.id]?.lastError || '-'}</div>
-                </div>
+              ))}
+            </div>
+          </CardContent>
+
+          {lastResults[monitor.id] && Object.entries(lastResults[monitor.id]).some(([_, listings]) => listings.length > 0) && (
+            <div className="mt-4 space-y-4">
+              {Object.entries(lastResults[monitor.id]).map(([site, listings]) => 
+                listings.length > 0 && (
+                  <Card key={site}>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {site === 'olx' && '🟢 OLX'}
+                        {site === 'webmotors' && '🔵 Webmotors'}
+                        {site === 'mercadolivre' && '🟡 Mercado Livre'}
+                        <Badge variant="secondary">{listings.length} anúncios</Badge>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>URL</TableHead>
+                            <TableHead>Preço</TableHead>
+                            <TableHead>KM</TableHead>
+                            <TableHead>Detectado em</TableHead>
+                            <TableHead>Dias Anunciados</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {listings.map((listing, index) => (
+                            <TableRow key={index}>
+                              <TableCell>
+                                <a 
+                                  href={listing.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-1 max-w-xs truncate"
+                                >
+                                  {listing.title || 'Ver anúncio'}
+                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                </a>
+                              </TableCell>
+                              <TableCell>{listing.price || '-'}</TableCell>
+                              <TableCell>{listing.mileage || '-'}</TableCell>
+                              <TableCell>
+                                {format(new Date(listing.detectedAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                              </TableCell>
+                              <TableCell>
+                                {differenceInDays(new Date(), new Date(listing.detectedAt))} dia(s)
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )
               )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Novos Anúncios</CardTitle>
-          <CardDescription>Agregado de todos os monitoramentos</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fonte</TableHead>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Preço</TableHead>
-                  <TableHead>KM</TableHead>
-                  <TableHead>Detectado em</TableHead>
-                  <TableHead>Dias Anunciados</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {aggregate.map((l) => {
-                  const detectedDate = new Date(l.firstSeenAt);
-                  const now = new Date();
-                  const daysAgo = Math.floor((now.getTime() - detectedDate.getTime()) / (1000 * 60 * 60 * 24));
-                  
-                  return (
-                    <TableRow key={`${l.monitorId}-${l.id}`}>
-                      <TableCell>
-                        <span className="capitalize font-medium">
-                          {l.site === 'mercadolivre' ? 'Mercado Livre' : 
-                           l.site === 'webmotors' ? 'Webmotors' : 'OLX'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <a
-                          href={l.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline break-all text-sm"
-                        >
-                          {l.url.length > 50 ? `${l.url.substring(0, 50)}...` : l.url}
-                        </a>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {l.priceText || 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {/* Extrair KM do priceText se disponível */}
-                        {l.priceText?.match(/(\d{1,3}(?:\.\d{3})*)\s*km/i)?.[1] ? 
-                          `${l.priceText.match(/(\d{1,3}(?:\.\d{3})*)\s*km/i)?.[1]} km` : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {detectedDate.toLocaleDateString('pt-BR')} {detectedDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded text-xs ${daysAgo === 0 ? 'bg-green-100 text-green-800' : 
-                                                                     daysAgo <= 3 ? 'bg-blue-100 text-blue-800' : 
-                                                                     'bg-gray-100 text-gray-800'}`}>
-                          {daysAgo === 0 ? 'Hoje' : `${daysAgo} dia${daysAgo > 1 ? 's' : ''}`}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {aggregate.length > 0 && (
-        <CarDetailsTable urls={aggregate.map(l => l.url)} />
-      )}
+            </div>
+          )}
+        </Card>
+      ))}
     </div>
   );
 };
+
+export default MonitorList;
+export { MonitorList };
