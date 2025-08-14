@@ -1,11 +1,16 @@
-export type SiteKey = 'olx' | 'webmotors' | 'mercadolivre';
-
+import { SiteKey } from '../types/monitor';
 import { WebmotorsParser } from './WebmotorsParser';
+import { OLXParser } from './OLXParser';
+import { MercadoLivreParser } from './MercadoLivreParser';
 
 export interface ParsedListing {
   url: string;
   title?: string;
-  priceText?: string;
+  price?: string;
+  mileage?: string;
+  location?: string;
+  site: SiteKey;
+  detectedAt: string;
 }
 
 const SITE_PATTERNS: Record<SiteKey, RegExp> = {
@@ -17,16 +22,76 @@ const SITE_PATTERNS: Record<SiteKey, RegExp> = {
 const PRICE_REGEX = /R\$\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?/i;
 
 export function extractListingsFromHtml(html: string, site: SiteKey): ParsedListing[] {
-  // Prefer structured DOM parsing; fallback to regex context scan
+  console.log(`\n=== PARSING ${site.toUpperCase()} ===`);
+  console.log('HTML size:', html.length);
+  
+  // Use specialized parsers first
+  const result = extractViaSpecializedParsers(html, site);
+  if (result.length > 0) {
+    console.log(`✅ ${site} specialized parser found ${result.length} listings`);
+    return result;
+  }
+  
+  // Fallback to DOM parsing
   const domResults = extractViaDom(html, site);
-  if (domResults.length > 0) return domResults;
-  return extractViaRegexContext(html, site);
+  if (domResults.length > 0) {
+    console.log(`✅ ${site} DOM parser found ${domResults.length} listings`);
+    return domResults;
+  }
+  
+  // Final fallback to regex
+  const regexResults = extractViaRegexContext(html, site);
+  console.log(`📋 ${site} regex fallback found ${regexResults.length} listings`);
+  return regexResults;
+}
+
+function extractViaSpecializedParsers(html: string, site: SiteKey): ParsedListing[] {
+  const now = new Date().toISOString();
+  
+  if (site === 'webmotors') {
+    WebmotorsParser.debugExtraction(html);
+    return WebmotorsParser.extractListings(html).map(listing => ({
+      url: listing.url,
+      title: listing.title,
+      price: listing.price,
+      mileage: listing.mileage,
+      site: 'webmotors' as SiteKey,
+      detectedAt: now
+    }));
+  }
+  
+  if (site === 'olx') {
+    return OLXParser.extractListings(html).map(listing => ({
+      url: listing.url,
+      title: listing.title,
+      price: listing.price,
+      mileage: listing.mileage,
+      location: listing.location,
+      site: 'olx' as SiteKey,
+      detectedAt: now
+    }));
+  }
+  
+  if (site === 'mercadolivre') {
+    return MercadoLivreParser.extractListings(html).map(listing => ({
+      url: listing.url,
+      title: listing.title,
+      price: listing.price,
+      mileage: listing.mileage,
+      location: listing.location,
+      site: 'mercadolivre' as SiteKey,
+      detectedAt: now
+    }));
+  }
+
+  return [];
 }
 
 function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
+    const now = new Date().toISOString();
 
     let anchors: HTMLAnchorElement[] = [];
     if (site === 'olx') {
@@ -70,7 +135,9 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
       results.push({
         url,
         title: a.getAttribute('title') || a.textContent?.trim() || undefined,
-        priceText: price || undefined,
+        price: price || undefined,
+        site,
+        detectedAt: now
       });
       seen.add(url);
       if (results.length >= 10) break; // limit to reduce noise
@@ -83,16 +150,7 @@ function extractViaDom(html: string, site: SiteKey): ParsedListing[] {
 }
 
 function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
-  // Para Webmotors, usar o parser especializado
-  if (site === 'webmotors') {
-    WebmotorsParser.debugExtraction(html);
-    const webmotorsListings = WebmotorsParser.extractListings(html);
-    return webmotorsListings.map(w => ({
-      url: w.url,
-      title: w.title,
-      priceText: w.price,
-    }));
-  }
+  const now = new Date().toISOString();
 
   // Padrões originais para outros sites
   const pattern = site === 'olx'
@@ -101,7 +159,11 @@ function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
 
   const matches = html.match(pattern) || [];
   const unique = Array.from(new Set(matches));
-  const listings: ParsedListing[] = unique.slice(0, 10).map((u) => ({ url: normalizeUrl(u) }));
+  const listings: ParsedListing[] = unique.slice(0, 10).map((u) => ({ 
+    url: normalizeUrl(u), 
+    site,
+    detectedAt: now 
+  }));
 
   // Try to grab some nearby price hints
   listings.forEach((item) => {
@@ -110,7 +172,7 @@ function extractViaRegexContext(html: string, site: SiteKey): ParsedListing[] {
       if (idx !== -1) {
         const context = html.slice(Math.max(0, idx - 600), Math.min(html.length, idx + 600));
         const price = context.match(PRICE_REGEX)?.[0];
-        if (price) item.priceText = price;
+        if (price) item.price = price;
       }
     } catch {}
   });

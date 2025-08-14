@@ -90,7 +90,7 @@ const runCheck = async (m: Monitor) => {
                       site: u.site,
                       firstSeenAt: now,
                       lastSeenAt: now,
-                      priceText: it.priceText,
+                      priceText: it.price || it.mileage || 'N/A',
                     });
                     known.add(it.url);
                   }
@@ -125,7 +125,7 @@ const runCheck = async (m: Monitor) => {
                     site: u.site,
                     firstSeenAt: now,
                     lastSeenAt: now,
-                    priceText: it.priceText,
+                    priceText: it.price || it.mileage || 'N/A',
                   });
                   known.add(it.url);
                 }
@@ -155,7 +155,7 @@ const runCheck = async (m: Monitor) => {
                   site: u.site,
                   firstSeenAt: now,
                   lastSeenAt: now,
-                  priceText: it.priceText,
+                  priceText: it.price || it.mileage || 'N/A',
                 });
                 known.add(it.url);
               }
@@ -247,22 +247,56 @@ const runCheck = async (m: Monitor) => {
                   <TableHead>Fonte</TableHead>
                   <TableHead>URL</TableHead>
                   <TableHead>Preço</TableHead>
+                  <TableHead>KM</TableHead>
                   <TableHead>Detectado em</TableHead>
+                  <TableHead>Dias Anunciados</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {aggregate.map((l) => (
-                  <TableRow key={`${l.monitorId}-${l.id}`}>
-                    <TableCell className="capitalize">{l.site}</TableCell>
-                    <TableCell>
-                      <a href={l.url} target="_blank" rel="noreferrer" className="text-primary underline-offset-4 hover:underline">
-                        {l.url}
-                      </a>
-                    </TableCell>
-                    <TableCell>{l.priceText || '-'}</TableCell>
-                    <TableCell>{new Date(l.firstSeenAt).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
+                {aggregate.map((l) => {
+                  const detectedDate = new Date(l.firstSeenAt);
+                  const now = new Date();
+                  const daysAgo = Math.floor((now.getTime() - detectedDate.getTime()) / (1000 * 60 * 60 * 24));
+                  
+                  return (
+                    <TableRow key={`${l.monitorId}-${l.id}`}>
+                      <TableCell>
+                        <span className="capitalize font-medium">
+                          {l.site === 'mercadolivre' ? 'Mercado Livre' : 
+                           l.site === 'webmotors' ? 'Webmotors' : 'OLX'}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <a
+                          href={l.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline break-all text-sm"
+                        >
+                          {l.url.length > 50 ? `${l.url.substring(0, 50)}...` : l.url}
+                        </a>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {l.priceText || 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        {/* Extrair KM do priceText se disponível */}
+                        {l.priceText?.match(/(\d{1,3}(?:\.\d{3})*)\s*km/i)?.[1] ? 
+                          `${l.priceText.match(/(\d{1,3}(?:\.\d{3})*)\s*km/i)?.[1]} km` : 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        {detectedDate.toLocaleDateString('pt-BR')} {detectedDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 rounded text-xs ${daysAgo === 0 ? 'bg-green-100 text-green-800' : 
+                                                                     daysAgo <= 3 ? 'bg-blue-100 text-blue-800' : 
+                                                                     'bg-gray-100 text-gray-800'}`}>
+                          {daysAgo === 0 ? 'Hoje' : `${daysAgo} dia${daysAgo > 1 ? 's' : ''}`}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
