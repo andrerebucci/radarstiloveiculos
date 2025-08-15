@@ -2,8 +2,15 @@ import { Helmet } from 'react-helmet-async';
 import { ApiKeyDialog } from '@/components/ApiKeyDialog';
 import { MonitorForm } from '@/components/MonitorForm';
 import { MonitorList } from '@/components/MonitorList';
+import { useState } from 'react';
+import { Monitor } from '@/types/monitor';
 
 const Index = () => {
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
+
+  const handleDeleteMonitor = (id: string) => {
+    setMonitors(prev => prev.filter(monitor => monitor.id !== id));
+  };
   return (
     <main className="min-h-screen bg-background">
       <Helmet>
@@ -41,7 +48,7 @@ const Index = () => {
           </div>
 
           <div className="mt-12">
-            <MonitorList />
+            <MonitorList monitors={monitors} onDelete={handleDeleteMonitor} />
           </div>
         </div>
       </section>
