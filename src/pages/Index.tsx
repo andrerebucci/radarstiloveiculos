@@ -2,14 +2,41 @@ import { Helmet } from 'react-helmet-async';
 import { ApiKeyDialog } from '@/components/ApiKeyDialog';
 import { MonitorForm } from '@/components/MonitorForm';
 import { MonitorList } from '@/components/MonitorList';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Monitor } from '@/types/monitor';
 
 const Index = () => {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
 
+  // Load monitors from localStorage on mount
+  useEffect(() => {
+    const loadMonitors = () => {
+      const stored = localStorage.getItem('cw_monitors_v1');
+      if (stored) {
+        setMonitors(JSON.parse(stored));
+      }
+    };
+
+    loadMonitors();
+
+    // Listen for monitor updates
+    const handleMonitorsUpdate = () => {
+      loadMonitors();
+    };
+
+    window.addEventListener('cw_monitors_updated', handleMonitorsUpdate);
+    return () => window.removeEventListener('cw_monitors_updated', handleMonitorsUpdate);
+  }, []);
+
   const handleDeleteMonitor = (id: string) => {
-    setMonitors(prev => prev.filter(monitor => monitor.id !== id));
+    const updatedMonitors = monitors.filter(monitor => monitor.id !== id);
+    setMonitors(updatedMonitors);
+    localStorage.setItem('cw_monitors_v1', JSON.stringify(updatedMonitors));
+    window.dispatchEvent(new Event('cw_monitors_updated'));
+  };
+
+  const handleMonitorAdded = (monitor: Monitor) => {
+    setMonitors(prev => [...prev, monitor]);
   };
   return (
     <main className="min-h-screen bg-background">
@@ -36,7 +63,7 @@ const Index = () => {
 
           <div className="mt-10 grid gap-6 md:grid-cols-2">
             <div>
-              <MonitorForm />
+              <MonitorForm onAdded={handleMonitorAdded} />
             </div>
             <div className="hidden md:block" aria-hidden>
               <div className="h-full rounded-lg border bg-card/50 backdrop-blur-sm p-6">
