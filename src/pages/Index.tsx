@@ -32,11 +32,6 @@ const Index = () => {
     const updatedMonitors = monitors.filter(monitor => monitor.id !== id);
     setMonitors(updatedMonitors);
     localStorage.setItem('cw_monitors_v1', JSON.stringify(updatedMonitors));
-    window.dispatchEvent(new Event('cw_monitors_updated'));
-  };
-
-  const handleMonitorAdded = (monitor: Monitor) => {
-    setMonitors(prev => [...prev, monitor]);
   };
   return (
     <main className="min-h-screen bg-background">
@@ -63,7 +58,7 @@ const Index = () => {
 
           <div className="mt-10 grid gap-6 md:grid-cols-2">
             <div>
-              <MonitorForm onAdded={handleMonitorAdded} />
+              <MonitorForm />
             </div>
             <div className="hidden md:block" aria-hidden>
               <div className="h-full rounded-lg border bg-card/50 backdrop-blur-sm p-6">

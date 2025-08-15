@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ExternalLink, Play, Trash2, AlertCircle, CheckCircle, Clock, Bug } from 'lucide-react';
+import { ExternalLink, Play, Trash2, AlertCircle, CheckCircle, Clock, Bug, ArrowUpDown } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ClientScraper } from '../utils/ClientScraper';
@@ -16,9 +16,48 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
   const [checkingMonitor, setCheckingMonitor] = useState<string | null>(null);
   const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [sortConfig, setSortConfig] = useState<Record<string, { key: string; direction: 'asc' | 'desc' }>>({});
 
   const addDebugLog = (message: string) => {
     setDebugLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
+
+  const sortListings = (listings: ParsedListing[], site: string, key: string) => {
+    const tableKey = `${site}-${key}`;
+    const currentSort = sortConfig[tableKey];
+    const direction = currentSort?.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc';
+    
+    setSortConfig(prev => ({
+      ...prev,
+      [tableKey]: { key, direction }
+    }));
+
+    return [...listings].sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (key) {
+        case 'price':
+          aValue = parseFloat(a.price?.replace(/\D/g, '') || '0');
+          bValue = parseFloat(b.price?.replace(/\D/g, '') || '0');
+          break;
+        case 'mileage':
+          aValue = parseFloat(a.mileage?.replace(/\D/g, '') || '0');
+          bValue = parseFloat(b.mileage?.replace(/\D/g, '') || '0');
+          break;
+        case 'detectedAt':
+          aValue = new Date(a.detectedAt).getTime();
+          bValue = new Date(b.detectedAt).getTime();
+          break;
+        default:
+          return 0;
+      }
+      
+      if (direction === 'asc') {
+        return aValue - bValue;
+      } else {
+        return bValue - aValue;
+      }
+    });
   };
 
   const checkMonitor = async (monitor: Monitor) => {
@@ -206,9 +245,60 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                         <TableHeader>
                           <TableRow>
                             <TableHead>URL</TableHead>
-                            <TableHead>Preço</TableHead>
-                            <TableHead>KM</TableHead>
-                            <TableHead>Detectado em</TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 select-none"
+                              onClick={() => {
+                                const sortedListings = sortListings(listings, site, 'price');
+                                setLastResults(prev => ({
+                                  ...prev,
+                                  [monitor.id]: {
+                                    ...prev[monitor.id],
+                                    [site]: sortedListings
+                                  }
+                                }));
+                              }}
+                            >
+                              <div className="flex items-center gap-1">
+                                Preço
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 select-none"
+                              onClick={() => {
+                                const sortedListings = sortListings(listings, site, 'mileage');
+                                setLastResults(prev => ({
+                                  ...prev,
+                                  [monitor.id]: {
+                                    ...prev[monitor.id],
+                                    [site]: sortedListings
+                                  }
+                                }));
+                              }}
+                            >
+                              <div className="flex items-center gap-1">
+                                KM
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 select-none"
+                              onClick={() => {
+                                const sortedListings = sortListings(listings, site, 'detectedAt');
+                                setLastResults(prev => ({
+                                  ...prev,
+                                  [monitor.id]: {
+                                    ...prev[monitor.id],
+                                    [site]: sortedListings
+                                  }
+                                }));
+                              }}
+                            >
+                              <div className="flex items-center gap-1">
+                                Detectado em
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
                             <TableHead>Dias Anunciados</TableHead>
                           </TableRow>
                         </TableHeader>
