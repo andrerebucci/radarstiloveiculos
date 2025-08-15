@@ -56,17 +56,8 @@ const Index = () => {
             </div>
           </header>
 
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            <div>
-              <MonitorForm />
-            </div>
-            <div className="hidden md:block" aria-hidden>
-              <div className="h-full rounded-lg border bg-card/50 backdrop-blur-sm p-6">
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Adicione seu primeiro monitoramento ao lado para começar.
-                </div>
-              </div>
-            </div>
+          <div className="mt-10">
+            <MonitorForm />
           </div>
 
           <div className="mt-12">
