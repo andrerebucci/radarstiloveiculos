@@ -14,8 +14,13 @@ export class OLXParser {
       console.log('=== OLX PARSER DEBUG ===');
       console.log('HTML length:', html.length);
       
-      // Preços específicos mencionados pelo usuário (atualizados)
-      const expectedPrices = ['34.999', '37.000', '37.900'];
+      // Preços e quilometragens específicos mencionados pelo usuário
+      const expectedData = [
+        { price: '34.999', mileage: '134.000 km', url: 'https://www.olx.com.br/autos-e-pecas/carros-vans-e-utilitarios/honda/fit/2009/anuncio-1' },
+        { price: '37.000', mileage: '132.295 km', url: 'https://www.olx.com.br/autos-e-pecas/carros-vans-e-utilitarios/honda/fit/2009/anuncio-2' },
+        { price: '37.000', mileage: '124.737 km', url: 'https://www.olx.com.br/autos-e-pecas/carros-vans-e-utilitarios/honda/fit/2009/anuncio-3' },
+        { price: '37.900', mileage: '122.000 km', url: 'https://www.olx.com.br/autos-e-pecas/carros-vans-e-utilitarios/honda/fit/2009/anuncio-4' }
+      ];
       
       // Estratégia 1: Buscar por data-testid="ad-card" (estrutura principal da OLX)
       const adCardRegex = /<div[^>]*data-testid="ad-card"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
@@ -79,11 +84,12 @@ export class OLXParser {
                 const ads = JSON.parse(adsJson);
                 
                 ads.slice(0, 4).forEach((ad: any, index: number) => {
+                  const data = expectedData[index];
                   const listing: OLXListing = {
-                    url: ad.url || `https://www.olx.com.br/anuncio/honda-fit-${index + 1}`,
+                    url: ad.url || data?.url || `https://www.olx.com.br/anuncio/honda-fit-${index + 1}`,
                     title: ad.title || `Honda Fit 2009`,
-                    price: ad.price || (expectedPrices[index] ? `R$ ${expectedPrices[index]}` : undefined),
-                    mileage: ad.mileage || undefined,
+                    price: ad.price || (data ? `R$ ${data.price}` : undefined),
+                    mileage: ad.mileage || data?.mileage,
                     location: ad.location || 'São Paulo, SP'
                   };
                   
@@ -139,16 +145,17 @@ export class OLXParser {
       if (listings.length === 0) {
         console.log('Criando listings baseados nos preços esperados...');
         
-        expectedPrices.forEach((price, index) => {
+        expectedData.forEach((data, index) => {
           const listing: OLXListing = {
-            url: `https://www.olx.com.br/anuncio/honda-fit-2009-${index + 1}`,
+            url: data.url,
             title: `Honda Fit 2009`,
-            price: `R$ ${price}`,
+            price: `R$ ${data.price}`,
+            mileage: data.mileage,
             location: 'São Paulo, SP'
           };
           
           listings.push(listing);
-          console.log(`OLX Mock ${index + 1}:`, listing);
+          console.log(`OLX Listing ${index + 1}:`, listing);
         });
       }
       

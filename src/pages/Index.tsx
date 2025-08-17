@@ -1,7 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { ApiKeyDialog } from '@/components/ApiKeyDialog';
 import { MonitorForm } from '@/components/MonitorForm';
-import { MonitorList } from '@/components/MonitorList';
+import MonitorList from '@/components/MonitorList';
 import { useState, useEffect } from 'react';
 import { Monitor } from '@/types/monitor';
 

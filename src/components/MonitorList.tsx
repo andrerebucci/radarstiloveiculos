@@ -1,9 +1,9 @@
 import { Monitor, SiteKey } from '../types/monitor';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ExternalLink, Play, Trash2, AlertCircle, CheckCircle, Clock, Bug, ArrowUpDown } from 'lucide-react';
+import { ExternalLink, Play, Trash2, AlertCircle, Clock, Bug, ArrowUpDown, Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ClientScraper } from '../utils/ClientScraper';
@@ -17,9 +17,51 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
   const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<Record<string, { key: string; direction: 'asc' | 'desc' }>>({});
+  const [removedListings, setRemovedListings] = useState<Set<string>>(new Set());
+  const [consolidatedSortConfig, setConsolidatedSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'detectedAt', direction: 'desc' });
 
   const addDebugLog = (message: string) => {
     setDebugLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
+
+  const removeListing = (listingId: string) => {
+    setRemovedListings(prev => new Set([...prev, listingId]));
+  };
+
+  const getConsolidatedListings = () => {
+    const allListings: ParsedListing[] = [];
+    
+    Object.values(lastResults).forEach(monitorResults => {
+      Object.values(monitorResults).forEach(listings => {
+        allListings.push(...listings);
+      });
+    });
+
+    return allListings
+      .filter(listing => !removedListings.has(`${listing.url}-${listing.site}`))
+      .sort((a, b) => {
+        if (consolidatedSortConfig.key === 'price') {
+          const priceA = parseFloat(a.price?.replace(/[R$\s.]/g, '').replace(',', '.') || '0');
+          const priceB = parseFloat(b.price?.replace(/[R$\s.]/g, '').replace(',', '.') || '0');
+          return consolidatedSortConfig.direction === 'asc' ? priceA - priceB : priceB - priceA;
+        }
+        if (consolidatedSortConfig.key === 'mileage') {
+          const mileageA = parseFloat(a.mileage?.replace(/[^\d]/g, '') || '0');
+          const mileageB = parseFloat(b.mileage?.replace(/[^\d]/g, '') || '0');
+          return consolidatedSortConfig.direction === 'asc' ? mileageA - mileageB : mileageB - mileageA;
+        }
+        if (consolidatedSortConfig.key === 'detectedAt') {
+          return consolidatedSortConfig.direction === 'asc' 
+            ? new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime()
+            : new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime();
+        }
+        if (consolidatedSortConfig.key === 'site') {
+          return consolidatedSortConfig.direction === 'asc' 
+            ? a.site.localeCompare(b.site)
+            : b.site.localeCompare(a.site);
+        }
+        return 0;
+      });
   };
 
   const sortListings = (listings: ParsedListing[], site: string, key: string) => {
@@ -244,7 +286,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>URL</TableHead>
+                            <TableHead>Título</TableHead>
                             <TableHead 
                               className="cursor-pointer hover:bg-muted/50 select-none"
                               onClick={() => {
@@ -306,15 +348,25 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                           {listings.map((listing, index) => (
                             <TableRow key={index}>
                               <TableCell>
-                                <a 
-                                  href={listing.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-1 max-w-xs truncate"
-                                >
-                                  {listing.title || 'Ver anúncio'}
-                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                </a>
+                                <div className="flex items-center gap-2">
+                                  <a 
+                                    href={listing.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 max-w-xs truncate"
+                                  >
+                                    {listing.title || 'Ver anúncio'}
+                                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                  </a>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeListing(`${listing.url}-${listing.site}`)}
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </TableCell>
                               <TableCell>{listing.price || '-'}</TableCell>
                               <TableCell>{listing.mileage || '-'}</TableCell>
@@ -336,9 +388,140 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
           )}
         </Card>
       ))}
+
+      {/* Painel Consolidado */}
+      {Object.keys(lastResults).length > 0 && getConsolidatedListings().length > 0 && (
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Todos os Anúncios Encontrados
+              <Badge variant="secondary" className="ml-2">
+                {getConsolidatedListings().length} anúncios
+              </Badge>
+            </CardTitle>
+            <CardDescription>
+              Consolidação de todos os anúncios encontrados em todos os sites
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setConsolidatedSortConfig({
+                        key: 'site',
+                        direction: consolidatedSortConfig.key === 'site' && consolidatedSortConfig.direction === 'asc' ? 'desc' : 'asc'
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Site
+                      {consolidatedSortConfig.key === 'site' && (
+                        consolidatedSortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setConsolidatedSortConfig({
+                        key: 'price',
+                        direction: consolidatedSortConfig.key === 'price' && consolidatedSortConfig.direction === 'asc' ? 'desc' : 'asc'
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Preço
+                      {consolidatedSortConfig.key === 'price' && (
+                        consolidatedSortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setConsolidatedSortConfig({
+                        key: 'mileage',
+                        direction: consolidatedSortConfig.key === 'mileage' && consolidatedSortConfig.direction === 'asc' ? 'desc' : 'asc'
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Quilometragem
+                      {consolidatedSortConfig.key === 'mileage' && (
+                        consolidatedSortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setConsolidatedSortConfig({
+                        key: 'detectedAt',
+                        direction: consolidatedSortConfig.key === 'detectedAt' && consolidatedSortConfig.direction === 'asc' ? 'desc' : 'asc'
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Detectado em
+                      {consolidatedSortConfig.key === 'detectedAt' && (
+                        consolidatedSortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {getConsolidatedListings().map((listing, index) => (
+                  <TableRow key={`${listing.url}-${listing.site}-${index}`}>
+                    <TableCell>
+                      <Badge variant={listing.site === 'mercadolivre' ? 'default' : listing.site === 'olx' ? 'secondary' : 'outline'}>
+                        {listing.site === 'mercadolivre' ? 'Mercado Livre' : listing.site === 'olx' ? 'OLX' : 'Webmotors'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={listing.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline flex items-center gap-1 max-w-xs truncate"
+                        >
+                          {listing.title || listing.url}
+                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                        </a>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeListing(`${listing.url}-${listing.site}`)}
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {listing.price || 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {listing.mileage || 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(listing.detectedAt).toLocaleString('pt-BR')}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
 
 export default MonitorList;
-export { MonitorList };
