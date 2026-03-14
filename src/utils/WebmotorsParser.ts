@@ -4,6 +4,7 @@ export interface WebmotorsListing {
   price?: string;
   year?: string;
   mileage?: string;
+  location?: string;
 }
 
 export class WebmotorsParser {
@@ -14,111 +15,130 @@ export class WebmotorsParser {
     console.log('HTML length:', html.length);
     
     try {
-      // Dados específicos dos anúncios reais encontrados
-      const expectedData = [
-        { price: '34.900', url: 'https://www.webmotors.com.br/comprar/honda/fit/14-lx-16v-flex-4p-manual/4-portas/2009/60870682' },
-        { price: '35.000', url: 'https://www.webmotors.com.br/comprar/honda/fit/14-lx-16v-flex-4p-manual/4-portas/2009/60509465' },
-        { price: '38.500', url: 'https://www.webmotors.com.br/comprar/honda/fit/14-lx-16v-flex-4p-manual/4-portas/2009/52308137' },
-        { price: '38.900', url: 'https://www.webmotors.com.br/comprar/honda/fit/14-lx-16v-flex-4p-manual/4-portas/2009/59867759' }
-      ];
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
       
-      // Buscar por estruturas JSON dentro do HTML que contêm dados dos veículos
-      const jsonPattern = /"vehicles":\s*\[(.*?)\]/s;
-      const jsonMatch = html.match(jsonPattern);
+      // Strategy 1: Find links to /comprar/ pages with numeric IDs
+      // Pattern: webmotors.com.br/comprar/marca/modelo/.../XXXXXXXX
+      const allLinks = Array.from(doc.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
       
-      if (jsonMatch) {
-        console.log('JSON de veículos encontrado!');
-        try {
-          // Tentar extrair dados do JSON
-          const vehiclesJson = `[${jsonMatch[1]}]`;
-          const vehicles = JSON.parse(vehiclesJson);
-          
-          vehicles.slice(0, 4).forEach((vehicle: any, index: number) => {
-            const data = expectedData[index];
-            const listing: WebmotorsListing = {
-              url: vehicle.url || data?.url || `https://www.webmotors.com.br/comprar/honda/fit/unknown`,
-              title: vehicle.title || `Honda Fit 1.4 LX 16V Flex 4p Manual`,
-              price: vehicle.price || (data ? `R$ ${data.price}` : undefined),
-              year: vehicle.year || '2009',
-              mileage: vehicle.mileage || ['180.000 km', '170.000 km', '259.000 km', '239.400 km'][index]
-            };
-            
-            listings.push(listing);
-            console.log(`Vehicle from JSON ${index + 1}:`, listing);
-          });
-        } catch (e) {
-          console.log('Erro ao parsear JSON de veículos:', e);
+      console.log(`Found ${allLinks.length} /comprar/ links`);
+      
+      // Filter to only actual vehicle pages (have a numeric ID at the end)
+      const vehicleLinks = allLinks.filter(a => {
+        const href = a.getAttribute('href') || '';
+        return /\/\d{7,}$/.test(href.replace(/[?#].*$/, ''));
+      });
+      
+      console.log(`Found ${vehicleLinks.length} vehicle links`);
+      
+      const seen = new Set<string>();
+      
+      for (const link of vehicleLinks) {
+        let href = link.getAttribute('href') || '';
+        if (!href) continue;
+        
+        if (href.startsWith('/')) href = `https://www.webmotors.com.br${href}`;
+        
+        // Normalize - remove query params for dedup
+        const normalized = href.replace(/[?#].*$/, '');
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        
+        const listing: WebmotorsListing = { url: href.replace(/[?#].*$/, '') };
+        
+        // Get title from alt text of images or link text
+        const title = link.getAttribute('title') || link.textContent?.trim();
+        if (title && title.length > 2 && title.length < 200) {
+          listing.title = title;
         }
-      }
-      
-      // Se não encontrou pelo JSON, usar estratégias alternativas
-      if (listings.length === 0) {
-        console.log('Tentando estratégias alternativas...');
         
-        // Buscar por cards de veículos usando data-testid ou classes específicas
-        const cardPatterns = [
-          /data-testid="vehicle-card"[^>]*>(.*?)<\/div>/gs,
-          /class="[^"]*vehicle[^"]*card[^"]*"[^>]*>(.*?)<\/div>/gs,
-          /data-qa="vehicle[^"]*"[^>]*>(.*?)<\/div>/gs
-        ];
+        // Find parent container for price, mileage, year, location
+        // Walk up the DOM tree to find a container with multiple data points
+        let container: Element | null = link;
+        for (let i = 0; i < 10 && container; i++) {
+          container = container.parentElement;
+          const text = container?.textContent || '';
+          // A good container has price AND mileage info
+          if (text.includes('R$') && /\d+.*km/i.test(text)) break;
+        }
         
-        cardPatterns.forEach(pattern => {
-          if (listings.length < 4) {
-            const matches = html.match(pattern) || [];
-            console.log(`Pattern encontrou ${matches.length} matches`);
-            
-            matches.slice(0, 4 - listings.length).forEach((match, index) => {
-              const listing: WebmotorsListing = { url: '' };
-              
-              // Buscar URL no match
-              const urlMatch = match.match(/href="([^"]*\/comprar\/[^"]*)"/);
-              if (urlMatch) {
-                listing.url = urlMatch[1].startsWith('http') ? urlMatch[1] : `https://www.webmotors.com.br${urlMatch[1]}`;
-              }
-              
-              // Buscar preço
-              const priceMatch = match.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/);
-              if (priceMatch) {
-                listing.price = `R$ ${priceMatch[1]}`;
-              } else if (expectedData[listings.length]) {
-                listing.price = `R$ ${expectedData[listings.length].price}`;
-              }
-              
-              // Buscar título
-              const titleMatch = match.match(/Honda\s+Fit[^<>]*/i);
-              if (titleMatch) {
-                listing.title = titleMatch[0].trim();
-              } else {
-                listing.title = 'Honda Fit 2009';
-              }
-              
-              listing.year = '2009';
-              
-              if (listing.url || listing.price) {
-                listings.push(listing);
-                console.log(`Card ${listings.length}:`, listing);
-              }
-            });
+        if (container) {
+          const containerText = container.textContent || '';
+          
+          // Extract price
+          const priceMatches = containerText.match(/R\$\s*[\d\.]+(?:,\d{2})?/g);
+          if (priceMatches) {
+            // Webmotors shows price once per card usually
+            listing.price = priceMatches[0];
           }
-        });
+          
+          // Extract mileage - pattern: "206.000 Km"
+          const mileageMatch = containerText.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
+          if (mileageMatch) {
+            listing.mileage = `${mileageMatch[1]} km`;
+          }
+          
+          // Extract year - pattern: "2009/2009" or "2008/2009"
+          const yearMatch = containerText.match(/(\d{4}\/\d{4})/);
+          if (yearMatch) {
+            listing.year = yearMatch[1];
+          }
+          
+          // Extract location - pattern: "City (ST)"
+          const locationMatch = containerText.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*\([A-Z]{2}\)/);
+          if (locationMatch) {
+            listing.location = locationMatch[0];
+          }
+        }
+        
+        // If no title from link, try to extract from image alt
+        if (!listing.title) {
+          const img = link.querySelector('img');
+          if (img) {
+            const alt = img.getAttribute('alt');
+            if (alt && alt.length > 2) listing.title = alt;
+          }
+        }
+        
+        listings.push(listing);
+        console.log(`WM listing: ${listing.title} - ${listing.price} - ${listing.mileage} - ${listing.url}`);
       }
       
-      // Estratégia final: criar listings baseados nos preços esperados
+      // Strategy 2: Regex fallback for raw HTML
       if (listings.length === 0) {
-        console.log('Criando listings baseados nos preços esperados...');
+        console.log('DOM parsing found nothing, trying regex...');
         
-        expectedData.forEach((data, index) => {
-          const listing: WebmotorsListing = {
-            url: data.url,
-            title: 'Honda Fit 1.4 LX 16V Flex 4p Manual',
-            price: `R$ ${data.price}`,
-            year: '2009',
-            mileage: ['180.000 km', '170.000 km', '259.000 km', '239.400 km'][index]
-          };
+        const urlPattern = /href="([^"]*webmotors\.com\.br\/comprar\/[^"]*\/\d{7,})[^"]*"/gi;
+        let match;
+        
+        while ((match = urlPattern.exec(html)) !== null && listings.length < 20) {
+          let url = match[1];
+          if (url.startsWith('/')) url = `https://www.webmotors.com.br${url}`;
+          
+          const normalized = url.replace(/[?#].*$/, '');
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          
+          const listing: WebmotorsListing = { url: normalized };
+          
+          const idx = html.indexOf(match[0]);
+          const context = html.slice(Math.max(0, idx - 3000), Math.min(html.length, idx + 3000));
+          
+          const priceMatch = context.match(/R\$\s*[\d\.]+(?:,\d{2})?/);
+          if (priceMatch) listing.price = priceMatch[0];
+          
+          const mileageMatch = context.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
+          if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
+          
+          const yearMatch = context.match(/(\d{4}\/\d{4})/);
+          if (yearMatch) listing.year = yearMatch[1];
+          
+          const titleMatch = context.match(/alt="([^"]{3,100})"/);
+          if (titleMatch) listing.title = titleMatch[1];
           
           listings.push(listing);
-          console.log(`Webmotors listing ${index + 1}:`, listing);
-        });
+        }
       }
       
     } catch (error) {
@@ -126,31 +146,20 @@ export class WebmotorsParser {
     }
     
     console.log(`Webmotors Parser FINAL: ${listings.length} anúncios encontrados`);
-    return listings.slice(0, 4); // Exatamente 4 como você mencionou
+    return listings;
   }
 
   static debugExtraction(html: string): void {
-    console.log('=== DEBUG WEBMOTORS PARSER ===');
-    console.log('Tamanho do HTML:', html.length);
+    console.log('=== DEBUG WEBMOTORS ===');
+    console.log('HTML size:', html.length);
     
-    // Buscar IDs específicos mencionados pelo usuário
-    const targetIds = ['60870682', '60509465', '52308137', '59867759'];
-    targetIds.forEach(id => {
-      const found = html.includes(id);
-      console.log(`ID ${id} encontrado no HTML:`, found);
-      if (found) {
-        const index = html.indexOf(id);
-        const context = html.slice(Math.max(0, index - 200), Math.min(html.length, index + 200));
-        console.log(`Contexto do ID ${id}:`, context);
-      }
-    });
+    const comprarCount = (html.match(/\/comprar\//g) || []).length;
+    console.log('/comprar/ occurrences:', comprarCount);
     
-    // Contar links do webmotors
-    const webmotorsLinks = (html.match(/webmotors\.com\.br/g) || []).length;
-    console.log('Links da Webmotors encontrados:', webmotorsLinks);
+    const priceCount = (html.match(/R\$/g) || []).length;
+    console.log('R$ occurrences:', priceCount);
     
-    // Contar padrão /comprar/
-    const comprarLinks = (html.match(/\/comprar\//g) || []).length;
-    console.log('Links com /comprar/ encontrados:', comprarLinks);
+    const kmCount = (html.match(/\d+\.\d+ [Kk]m/g) || []).length;
+    console.log('Km patterns:', kmCount);
   }
 }
