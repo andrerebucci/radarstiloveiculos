@@ -11,65 +11,64 @@ Deno.serve(async (req) => {
   try {
     const results: any = {};
 
-    // ML API - try different endpoints
-    const mlEndpoints = [
-      'https://api.mercadolibre.com/sites/MLB/search?q=honda+fit+2009',
-      'https://api.mercadolibre.com/sites/MLB/search?q=honda+fit&yearRange=2009-2009',
-      'https://api.mercadolibre.com/sites/MLB/search?category=MLB1744&q=honda+fit',
-    ];
+    // Fetch ML via proxy and analyze HTML structure
+    const mlUrl = encodeURIComponent('https://lista.mercadolivre.com.br/veiculos/carros-caminhonetes/honda/fit-em-sao-paulo/_YearRange_2009-2009_PriceRange_0-39000');
+    const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${mlUrl}`);
+    const html = await proxyRes.text();
 
-    for (let i = 0; i < mlEndpoints.length; i++) {
-      try {
-        const res = await fetch(mlEndpoints[i], {
-          headers: { 'Accept': 'application/json' }
-        });
-        results[`ml_endpoint${i}_status`] = res.status;
-        const body = await res.text();
-        results[`ml_endpoint${i}_body`] = body.slice(0, 1000);
-      } catch (e) {
-        results[`ml_endpoint${i}_error`] = String(e);
-      }
+    results.htmlLength = html.length;
+
+    // Find MLB link patterns and extract samples
+    const mlbLinks = html.match(/href="[^"]*MLB[^"]*"/g) || [];
+    results.mlbLinkCount = mlbLinks.length;
+    results.mlbLinkSamples = mlbLinks.slice(0, 5);
+
+    // Find price patterns near MLB links
+    const firstMlbIdx = html.indexOf('MLB');
+    if (firstMlbIdx > 0) {
+      // Get a big chunk around the first listing area
+      results.firstMlbContext = html.slice(Math.max(0, firstMlbIdx - 500), firstMlbIdx + 2000);
     }
 
-    // Try allorigins proxy for Webmotors
-    try {
-      const wmUrl = encodeURIComponent('https://www.webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009?tipoveiculo=carros&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&o=5&page=1');
-      const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${wmUrl}`);
-      results.wm_proxy_status = proxyRes.status;
-      const proxyBody = await proxyRes.text();
-      results.wm_proxy_length = proxyBody.length;
-      results.wm_proxy_has_prices = proxyBody.includes('35.000') || proxyBody.includes('35000');
-      results.wm_proxy_has_comprar = proxyBody.includes('/comprar/');
-      results.wm_proxy_sample = proxyBody.slice(0, 500);
-    } catch (e) {
-      results.wm_proxy_error = String(e);
+    // Look for poly-card or similar card components
+    results.polyCardCount = (html.match(/poly-card/g) || []).length;
+    results.polyComponentCount = (html.match(/poly-component/g) || []).length;
+
+    // Find list item structures
+    const liItems = html.match(/<li[^>]*class="[^"]*"[^>]*>/g) || [];
+    results.liItemSamples = liItems.slice(0, 10).map(li => li.slice(0, 200));
+
+    // Find price amounts - ML uses andes-money format
+    const moneyPattern = html.match(/andes-money[^<]*|price[^<]*/gi) || [];
+    results.moneyPatterns = moneyPattern.slice(0, 10);
+
+    // Find a full card HTML
+    // Try to find the structure between consecutive MLB links
+    const allMlbPositions = [];
+    let searchFrom = 0;
+    for (let i = 0; i < 5; i++) {
+      const pos = html.indexOf('MLB', searchFrom);
+      if (pos === -1) break;
+      allMlbPositions.push(pos);
+      searchFrom = pos + 5;
     }
 
-    // Try allorigins for ML
-    try {
-      const mlUrl = encodeURIComponent('https://lista.mercadolivre.com.br/veiculos/carros-caminhonetes/honda/fit-em-sao-paulo/_YearRange_2009-2009_PriceRange_0-39000');
-      const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${mlUrl}`);
-      results.ml_proxy_status = proxyRes.status;
-      const proxyBody = await proxyRes.text();
-      results.ml_proxy_length = proxyBody.length;
-      results.ml_proxy_has_mlb = (proxyBody.match(/MLB/g) || []).length;
-      results.ml_proxy_has_prices = proxyBody.includes('R$');
-      results.ml_proxy_sample = proxyBody.slice(0, 500);
-    } catch (e) {
-      results.ml_proxy_error = String(e);
+    if (allMlbPositions.length >= 2) {
+      // Get the chunk between first and second MLB to see one card structure
+      results.cardSample = html.slice(
+        Math.max(0, allMlbPositions[0] - 300),
+        Math.min(html.length, allMlbPositions[1] + 100)
+      );
     }
 
-    // Try Google web cache for Webmotors
-    try {
-      const cacheRes = await fetch('https://webcache.googleusercontent.com/search?q=cache:webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009', {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      });
-      results.wm_cache_status = cacheRes.status;
-      const cacheBody = await cacheRes.text();
-      results.wm_cache_length = cacheBody.length;
-    } catch (e) {
-      results.wm_cache_error = String(e);
-    }
+    // Look for data attributes
+    const dataAttrs = html.match(/data-[a-z-]+="[^"]*"/g) || [];
+    const uniqueDataAttrs = [...new Set(dataAttrs.map(a => a.split('=')[0]))];
+    results.dataAttributes = uniqueDataAttrs.slice(0, 20);
+
+    // Find all class patterns containing 'result' or 'item' or 'card'
+    const classPatterns = html.match(/class="[^"]*(?:result|item|card|listing)[^"]*"/gi) || [];
+    results.relevantClasses = [...new Set(classPatterns)].slice(0, 15);
 
     return new Response(
       JSON.stringify(results, null, 2),
