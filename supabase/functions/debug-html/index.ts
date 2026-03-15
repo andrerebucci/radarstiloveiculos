@@ -9,85 +9,66 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
-
-    // Test Webmotors API
-    const wmApiUrl = 'https://www.webmotors.com.br/api/search/car?url=https://www.webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009&tipoveiculo=carros&estadocidade=S%C3%A3o%20Paulo&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&anunciante=Concession%C3%A1ria%7CLoja%7CPessoa%20F%C3%ADsica&o=5&page=1';
-    
-    // Test ML API
-    const mlApiUrl = 'https://api.mercadolibre.com/sites/MLB/search?category=MLB1744&q=honda+fit+2009&price=*-39000&state=SP';
-
     const results: any = {};
 
-    // Test Webmotors API
-    try {
-      const wmRes = await fetch(wmApiUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json',
-          'Referer': 'https://www.webmotors.com.br/',
-        }
-      });
-      results.webmotors_api_status = wmRes.status;
-      if (wmRes.ok) {
-        const wmData = await wmRes.json();
-        results.webmotors_api_type = typeof wmData;
-        results.webmotors_api_keys = Object.keys(wmData).slice(0, 20);
-        if (wmData.SearchResults) {
-          results.webmotors_results_count = wmData.SearchResults.length;
-          if (wmData.SearchResults[0]) {
-            results.webmotors_first_item = JSON.stringify(wmData.SearchResults[0]).slice(0, 2000);
-          }
-        } else if (Array.isArray(wmData)) {
-          results.webmotors_array_length = wmData.length;
-          if (wmData[0]) results.webmotors_first_item = JSON.stringify(wmData[0]).slice(0, 2000);
-        }
-        results.webmotors_raw_sample = JSON.stringify(wmData).slice(0, 3000);
-      } else {
-        results.webmotors_api_body = await wmRes.text().then(t => t.slice(0, 500));
+    // ML API - try different endpoints
+    const mlEndpoints = [
+      'https://api.mercadolibre.com/sites/MLB/search?q=honda+fit+2009',
+      'https://api.mercadolibre.com/sites/MLB/search?q=honda+fit&yearRange=2009-2009',
+      'https://api.mercadolibre.com/sites/MLB/search?category=MLB1744&q=honda+fit',
+    ];
+
+    for (let i = 0; i < mlEndpoints.length; i++) {
+      try {
+        const res = await fetch(mlEndpoints[i], {
+          headers: { 'Accept': 'application/json' }
+        });
+        results[`ml_endpoint${i}_status`] = res.status;
+        const body = await res.text();
+        results[`ml_endpoint${i}_body`] = body.slice(0, 1000);
+      } catch (e) {
+        results[`ml_endpoint${i}_error`] = String(e);
       }
-    } catch (e) {
-      results.webmotors_api_error = String(e);
     }
 
-    // Test Webmotors search API v2
+    // Try allorigins proxy for Webmotors
     try {
-      const wmRes2 = await fetch('https://www.webmotors.com.br/api/search/car?tipoveiculo=carros&estadocidade=S%C3%A3o+Paulo&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&o=5&page=1', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Referer': 'https://www.webmotors.com.br/',
-          'Origin': 'https://www.webmotors.com.br',
-        }
-      });
-      results.webmotors_api2_status = wmRes2.status;
-      const body2 = await wmRes2.text();
-      results.webmotors_api2_body = body2.slice(0, 2000);
+      const wmUrl = encodeURIComponent('https://www.webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009?tipoveiculo=carros&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&o=5&page=1');
+      const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${wmUrl}`);
+      results.wm_proxy_status = proxyRes.status;
+      const proxyBody = await proxyRes.text();
+      results.wm_proxy_length = proxyBody.length;
+      results.wm_proxy_has_prices = proxyBody.includes('35.000') || proxyBody.includes('35000');
+      results.wm_proxy_has_comprar = proxyBody.includes('/comprar/');
+      results.wm_proxy_sample = proxyBody.slice(0, 500);
     } catch (e) {
-      results.webmotors_api2_error = String(e);
+      results.wm_proxy_error = String(e);
     }
 
-    // Test ML API
+    // Try allorigins for ML
     try {
-      const mlRes = await fetch(mlApiUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': 'application/json',
-        }
-      });
-      results.ml_api_status = mlRes.status;
-      if (mlRes.ok) {
-        const mlData = await mlRes.json();
-        results.ml_results_count = mlData.results?.length;
-        results.ml_paging = mlData.paging;
-        if (mlData.results?.[0]) {
-          results.ml_first_item = JSON.stringify(mlData.results[0]).slice(0, 2000);
-        }
-      } else {
-        results.ml_api_body = await mlRes.text().then(t => t.slice(0, 500));
-      }
+      const mlUrl = encodeURIComponent('https://lista.mercadolivre.com.br/veiculos/carros-caminhonetes/honda/fit-em-sao-paulo/_YearRange_2009-2009_PriceRange_0-39000');
+      const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${mlUrl}`);
+      results.ml_proxy_status = proxyRes.status;
+      const proxyBody = await proxyRes.text();
+      results.ml_proxy_length = proxyBody.length;
+      results.ml_proxy_has_mlb = (proxyBody.match(/MLB/g) || []).length;
+      results.ml_proxy_has_prices = proxyBody.includes('R$');
+      results.ml_proxy_sample = proxyBody.slice(0, 500);
     } catch (e) {
-      results.ml_api_error = String(e);
+      results.ml_proxy_error = String(e);
+    }
+
+    // Try Google web cache for Webmotors
+    try {
+      const cacheRes = await fetch('https://webcache.googleusercontent.com/search?q=cache:webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      results.wm_cache_status = cacheRes.status;
+      const cacheBody = await cacheRes.text();
+      results.wm_cache_length = cacheBody.length;
+    } catch (e) {
+      results.wm_cache_error = String(e);
     }
 
     return new Response(
