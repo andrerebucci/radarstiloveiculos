@@ -8,114 +8,36 @@ export interface MercadoLivreListing {
 
 export class MercadoLivreParser {
   static extractListings(html: string): MercadoLivreListing[] {
-    const listings: MercadoLivreListing[] = [];
+    console.log('=== MERCADOLIVRE PARSER DEBUG ===');
+    console.log('HTML length:', html.length);
     
     try {
-      // Strategy 1: Extract from __PRELOADED_STATE__ or similar JSON
-      const jsonDataResults = this.extractFromEmbeddedJson(html);
-      if (jsonDataResults.length > 0) {
-        console.log(`MercadoLivre: JSON extraction found ${jsonDataResults.length} listings`);
-        return jsonDataResults;
-      }
-
-      // Strategy 2: DOM parsing for search result cards
+      // Strategy 1: DOM parsing
       const domResults = this.extractViaDom(html);
       if (domResults.length > 0) {
-        console.log(`MercadoLivre: DOM extraction found ${domResults.length} listings`);
+        console.log(`ML DOM: found ${domResults.length} listings`);
         return domResults;
       }
 
-      // Strategy 3: Regex-based extraction
+      // Strategy 2: Regex for MLB links with context
       const regexResults = this.extractViaRegex(html);
       if (regexResults.length > 0) {
-        console.log(`MercadoLivre: Regex extraction found ${regexResults.length} listings`);
+        console.log(`ML Regex: found ${regexResults.length} listings`);
         return regexResults;
       }
-      
+
+      // Strategy 3: JSON-LD
+      const jsonLdResults = this.extractFromJsonLd(html);
+      if (jsonLdResults.length > 0) {
+        console.log(`ML JSON-LD: found ${jsonLdResults.length} listings`);
+        return jsonLdResults;
+      }
     } catch (error) {
       console.error('Erro no MercadoLivreParser:', error);
     }
     
-    console.log(`MercadoLivre Parser encontrou ${listings.length} anúncios`);
-    return listings;
-  }
-
-  private static extractFromEmbeddedJson(html: string): MercadoLivreListing[] {
-    const listings: MercadoLivreListing[] = [];
-    
-    // Look for JSON-LD structured data
-    const jsonLdPattern = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-    let jsonLdMatch;
-    while ((jsonLdMatch = jsonLdPattern.exec(html)) !== null) {
-      try {
-        const data = JSON.parse(jsonLdMatch[1]);
-        if (data['@type'] === 'ItemList' && data.itemListElement) {
-          for (const item of data.itemListElement) {
-            const listing: MercadoLivreListing = {
-              url: item.url || '',
-              title: item.name || item.item?.name,
-              price: item.offers?.price ? `R$ ${Number(item.offers.price).toLocaleString('pt-BR')}` : undefined,
-            };
-            if (listing.url) listings.push(listing);
-          }
-        } else if (data['@type'] === 'Car' || data['@type'] === 'Vehicle') {
-          listings.push({
-            url: data.url || '',
-            title: data.name,
-            price: data.offers?.price ? `R$ ${Number(data.offers.price).toLocaleString('pt-BR')}` : undefined,
-          });
-        }
-      } catch { /* continue */ }
-    }
-    
-    if (listings.length > 0) return listings;
-
-    // Look for __PRELOADED_STATE__
-    const statePatterns = [
-      /window\.__PRELOADED_STATE__\s*=\s*({[\s\S]*?});\s*<\/script>/i,
-      /window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});\s*<\/script>/i,
-    ];
-
-    for (const pattern of statePatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        try {
-          const state = JSON.parse(match[1]);
-          const found = this.searchJsonForListings(state);
-          if (found.length > 0) return found;
-        } catch { /* continue */ }
-      }
-    }
-
+    console.log('MercadoLivre Parser: 0 anúncios encontrados');
     return [];
-  }
-
-  private static searchJsonForListings(obj: any, depth = 0): MercadoLivreListing[] {
-    if (depth > 8 || !obj || typeof obj !== 'object') return [];
-    
-    if (Array.isArray(obj) && obj.length > 0) {
-      // Check if items look like listings
-      const first = obj[0];
-      if (first && (first.id || first.permalink || first.title) && 
-          (first.price || first.prices || first.currency_id)) {
-        return obj.map(item => ({
-          url: item.permalink || item.url || '',
-          title: item.title,
-          price: item.price ? `R$ ${Number(item.price).toLocaleString('pt-BR')}` : 
-                 item.prices?.prices?.[0]?.amount ? `R$ ${Number(item.prices.prices[0].amount).toLocaleString('pt-BR')}` : undefined,
-          mileage: item.attributes?.find?.((a: any) => a.id === 'KILOMETERS')?.value_name,
-          location: item.seller_address?.city?.name || item.location?.city,
-        })).filter((l: MercadoLivreListing) => l.url);
-      }
-    }
-
-    const results: MercadoLivreListing[] = [];
-    const keys = Array.isArray(obj) ? obj : Object.values(obj);
-    for (const val of keys) {
-      const found = this.searchJsonForListings(val, depth + 1);
-      if (found.length > 0) return found;
-    }
-    return results;
   }
 
   private static extractViaDom(html: string): MercadoLivreListing[] {
@@ -124,58 +46,82 @@ export class MercadoLivreParser {
     const doc = parser.parseFromString(html, 'text/html');
     const seen = new Set<string>();
 
-    // MercadoLivre uses various selectors for result items
-    const selectors = [
+    // Try multiple selectors for result items
+    const containerSelectors = [
       'li.ui-search-layout__item',
       'div.ui-search-result',
-      '[data-testid="result-item"]',
-      'li[class*="results"]',
+      'li[class*="ui-search"]',
       'div[class*="poly-card"]',
-      'section.poly-card',
+      'section[class*="poly-card"]',
+      'div[class*="andes-card"]',
+      'ol.ui-search-layout li',
     ];
 
     let items: Element[] = [];
-    for (const selector of selectors) {
+    for (const selector of containerSelectors) {
       items = Array.from(doc.querySelectorAll(selector));
       if (items.length > 0) {
-        console.log(`MercadoLivre DOM: Found ${items.length} items with selector "${selector}"`);
+        console.log(`ML DOM: Found ${items.length} items with "${selector}"`);
         break;
       }
     }
 
+    // If no container found, try finding all links with MLB
+    if (items.length === 0) {
+      console.log('ML DOM: No containers found, trying direct MLB links');
+      const allLinks = Array.from(doc.querySelectorAll('a[href*="MLB"]')) as HTMLAnchorElement[];
+      console.log(`ML DOM: Found ${allLinks.length} MLB links`);
+      
+      for (const link of allLinks) {
+        const href = link.getAttribute('href') || '';
+        if (this.isTrackingUrl(href)) continue;
+        if (!href.includes('MLB')) continue;
+        
+        const url = this.normalizeUrl(href);
+        if (seen.has(url)) continue;
+        seen.add(url);
+
+        const listing = this.extractListingFromContext(link, url);
+        if (listing) listings.push(listing);
+        if (listings.length >= 20) break;
+      }
+      return listings;
+    }
+
     for (const item of items) {
-      const link = item.querySelector('a[href*="MLB"], a[href*="mlb"], a[href*="mercadolivre"]') as HTMLAnchorElement;
-      if (!link) continue;
-
-      const href = link.getAttribute('href') || '';
-      if (!href || href.includes('click1.') || href.includes('/clicks/')) continue;
+      const links = Array.from(item.querySelectorAll('a[href]')) as HTMLAnchorElement[];
+      let bestLink = '';
       
-      const url = href.startsWith('http') ? href : `https://www.mercadolivre.com.br${href}`;
-      const normalizedUrl = url.split('?')[0].split('#')[0];
-      if (seen.has(normalizedUrl)) continue;
-      seen.add(normalizedUrl);
-
-      const listing: MercadoLivreListing = { url: normalizedUrl };
+      for (const link of links) {
+        const href = link.getAttribute('href') || '';
+        if (href.includes('MLB') && !this.isTrackingUrl(href)) {
+          bestLink = href;
+          break;
+        }
+      }
       
+      if (!bestLink) continue;
+      
+      const url = this.normalizeUrl(bestLink);
+      if (seen.has(url)) continue;
+      seen.add(url);
+
+      const listing: MercadoLivreListing = { url };
+      const text = item.textContent || '';
+
       // Title
-      const titleEl = item.querySelector('h2, [class*="title"], a[title]');
+      const titleEl = item.querySelector('h2, h3, [class*="title"], a[title]');
       if (titleEl) {
         listing.title = (titleEl.getAttribute('title') || titleEl.textContent || '').trim();
       }
 
-      // Price - look for price containers
-      const text = item.textContent || '';
-      const priceMatch = text.match(/R\$\s*([\d\.]+)/);
+      // Price - extract number from text
+      const priceMatch = text.match(/(\d{1,3}(?:\.\d{3})+)/);
       if (priceMatch) {
-        listing.price = `R$ ${priceMatch[1]}`;
-      }
-
-      // Also check for fraction
-      const priceContainer = item.querySelector('[class*="price"], [class*="Price"]');
-      if (priceContainer) {
-        const pText = priceContainer.textContent || '';
-        const pMatch = pText.match(/(\d{1,3}(?:\.\d{3})*)/);
-        if (pMatch) listing.price = `R$ ${pMatch[1]}`;
+        const num = parseInt(priceMatch[1].replace(/\./g, ''));
+        if (num >= 5000 && num <= 500000) {
+          listing.price = `R$ ${priceMatch[1]}`;
+        }
       }
 
       // Mileage
@@ -183,7 +129,7 @@ export class MercadoLivreParser {
       if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
 
       // Location
-      const locationMatch = text.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*-\s*([A-Z]{2})/);
+      const locationMatch = text.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [a-zà-ú]+)*(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})/);
       if (locationMatch) listing.location = `${locationMatch[1]} - ${locationMatch[2]}`;
 
       listings.push(listing);
@@ -193,52 +139,78 @@ export class MercadoLivreParser {
     return listings;
   }
 
+  private static extractListingFromContext(link: HTMLAnchorElement, url: string): MercadoLivreListing | null {
+    const listing: MercadoLivreListing = { url };
+    
+    // Walk up to find a container
+    let container: Element | null = link;
+    for (let i = 0; i < 8 && container; i++) {
+      container = container.parentElement;
+      const text = container?.textContent || '';
+      if (text.length > 50 && /\d{2,3}\.\d{3}/.test(text)) break;
+    }
+
+    const text = container?.textContent || link.textContent || '';
+
+    // Title
+    listing.title = link.getAttribute('title') || link.textContent?.trim() || undefined;
+    if (listing.title && listing.title.length > 150) listing.title = listing.title.slice(0, 150);
+
+    // Price
+    const priceMatch = text.match(/(\d{1,3}(?:\.\d{3})+)/);
+    if (priceMatch) {
+      const num = parseInt(priceMatch[1].replace(/\./g, ''));
+      if (num >= 5000 && num <= 500000) {
+        listing.price = `R$ ${priceMatch[1]}`;
+      }
+    }
+
+    // Mileage
+    const mileageMatch = text.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
+    if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
+
+    return (listing.price || listing.title) ? listing : null;
+  }
+
   private static extractViaRegex(html: string): MercadoLivreListing[] {
     const listings: MercadoLivreListing[] = [];
     const seen = new Set<string>();
     
-    // Find MLB links
+    // Find all MLB links
     const mlbPattern = /href="([^"]*MLB[- ]?\d+[^"]*)"/gi;
     let match;
     
     while ((match = mlbPattern.exec(html)) !== null && listings.length < 20) {
       const rawUrl = match[1];
+      if (this.isTrackingUrl(rawUrl)) continue;
       
-      // Skip tracking/click URLs
-      if (rawUrl.includes('click1.') || rawUrl.includes('/brand_ads/') || rawUrl.includes('/clicks/')) continue;
-      
-      const url = rawUrl.startsWith('http') ? rawUrl : `https://www.mercadolivre.com.br${rawUrl}`;
-      const normalizedUrl = url.split('?')[0].split('#')[0];
-      if (seen.has(normalizedUrl)) continue;
-      seen.add(normalizedUrl);
+      const url = this.normalizeUrl(rawUrl);
+      if (seen.has(url)) continue;
+      seen.add(url);
       
       const idx = html.indexOf(match[0]);
-      const context = html.slice(Math.max(0, idx - 2000), Math.min(html.length, idx + 2000));
+      const context = html.slice(Math.max(0, idx - 3000), Math.min(html.length, idx + 3000));
       
-      const listing: MercadoLivreListing = { url: normalizedUrl };
+      const listing: MercadoLivreListing = { url };
       
-      // Title
+      // Title - look for title attribute or heading text near the link
       const titleMatch = context.match(/title="([^"]{5,150})"/) ||
-                         context.match(/alt="([^"]{5,150})"/);
+                         context.match(/alt="([^"]{5,100})"/);
       if (titleMatch) listing.title = titleMatch[1].trim();
       
-      // Price
-      const priceMatch = context.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-      if (priceMatch) listing.price = `R$ ${priceMatch[1]}`;
-      
-      // Alternatively look for separated price components (integer + cents)
-      if (!listing.price) {
-        const intMatch = context.match(/"price[_-]?amount"[^>]*>(\d{1,3}(?:\.\d{3})*)/i);
-        if (intMatch) listing.price = `R$ ${intMatch[1]}`;
+      // Price - find numbers that look like car prices (5k-500k range)
+      const priceMatches = context.match(/(\d{1,3}(?:\.\d{3})+)/g) || [];
+      for (const pm of priceMatches) {
+        const num = parseInt(pm.replace(/\./g, ''));
+        if (num >= 5000 && num <= 500000) {
+          listing.price = `R$ ${pm}`;
+          break;
+        }
       }
       
       // Mileage
       const mileageMatch = context.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
       if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
-      
-      // Location  
-      const locationMatch = context.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*-\s*([A-Z]{2})/);
-      if (locationMatch) listing.location = `${locationMatch[1]} - ${locationMatch[2]}`;
       
       if (listing.price || listing.title) {
         listings.push(listing);
@@ -246,5 +218,44 @@ export class MercadoLivreParser {
     }
     
     return listings;
+  }
+
+  private static extractFromJsonLd(html: string): MercadoLivreListing[] {
+    const listings: MercadoLivreListing[] = [];
+    const jsonLdPattern = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    
+    while ((match = jsonLdPattern.exec(html)) !== null) {
+      try {
+        const data = JSON.parse(match[1]);
+        if (data['@type'] === 'ItemList' && data.itemListElement) {
+          for (const item of data.itemListElement) {
+            const listing: MercadoLivreListing = {
+              url: item.url || item.item?.url || '',
+              title: item.name || item.item?.name,
+              price: item.offers?.price ? `R$ ${Number(item.offers.price).toLocaleString('pt-BR')}` : undefined,
+            };
+            if (listing.url) listings.push(listing);
+          }
+        }
+      } catch { /* continue */ }
+    }
+    
+    return listings;
+  }
+
+  private static isTrackingUrl(url: string): boolean {
+    return url.includes('click1.') || 
+           url.includes('/brand_ads/') || 
+           url.includes('/clicks/') ||
+           url.includes('mercadolibre.com/jm/') ||
+           url.includes('/tracking/');
+  }
+
+  private static normalizeUrl(url: string): string {
+    if (!url.startsWith('http')) {
+      url = url.startsWith('/') ? `https://www.mercadolivre.com.br${url}` : url;
+    }
+    return url.split('#')[0].split('?')[0];
   }
 }
