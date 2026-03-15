@@ -20,27 +20,53 @@ Deno.serve(async (req) => {
 
     console.log('Fetching URL:', url);
 
-    const response = await fetch(url, {
+    // First request to get cookies
+    const initialResponse = await fetch(url, {
       method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      },
+      headers: getHeaders(url),
+      redirect: 'follow',
     });
 
-    if (!response.ok) {
-      console.error('Fetch failed:', response.status, response.statusText);
-      return new Response(
-        JSON.stringify({ success: false, error: `HTTP ${response.status}: ${response.statusText}` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Extract cookies from response
+    const cookies = initialResponse.headers.get('set-cookie') || '';
+    
+    let html = await initialResponse.text();
+
+    // If blocked (403/captcha), retry with cookies
+    if (initialResponse.status === 403 || html.length < 1000) {
+      console.log('First attempt blocked, retrying with cookies...');
+      
+      const retryResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+          ...getHeaders(url),
+          'Cookie': cookies,
+        },
+        redirect: 'follow',
+      });
+
+      if (retryResponse.ok) {
+        html = await retryResponse.text();
+      } else {
+        // Try mobile user agent as last resort
+        console.log('Retrying with mobile UA...');
+        const mobileResponse = await fetch(url, {
+          method: 'GET',
+          headers: getMobileHeaders(url),
+          redirect: 'follow',
+        });
+        html = await mobileResponse.text();
+        
+        if (!mobileResponse.ok) {
+          console.error('All attempts failed:', mobileResponse.status);
+          return new Response(
+            JSON.stringify({ success: false, error: `HTTP ${mobileResponse.status}: ${mobileResponse.statusText}` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     }
 
-    const html = await response.text();
     console.log('Fetched HTML size:', html.length);
 
     return new Response(
@@ -52,7 +78,48 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch URL';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
+
+function getHeaders(url: string): Record<string, string> {
+  const host = new URL(url).hostname;
+  return {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': `https://${host}/`,
+    'Host': host,
+  };
+}
+
+function getMobileHeaders(url: string): Record<string, string> {
+  const host = new URL(url).hostname;
+  return {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Sec-Ch-Ua-Mobile': '?1',
+    'Sec-Ch-Ua-Platform': '"Android"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': `https://www.google.com/`,
+    'Host': host,
+  };
+}
