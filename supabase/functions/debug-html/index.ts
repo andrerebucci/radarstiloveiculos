@@ -11,137 +11,87 @@ Deno.serve(async (req) => {
   try {
     const { url } = await req.json();
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      },
-      redirect: 'follow',
-    });
-
-    const html = await response.text();
+    // Test Webmotors API
+    const wmApiUrl = 'https://www.webmotors.com.br/api/search/car?url=https://www.webmotors.com.br/carros/sp/honda/fit/de.2009/ate.2009&tipoveiculo=carros&estadocidade=S%C3%A3o%20Paulo&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&anunciante=Concession%C3%A1ria%7CLoja%7CPessoa%20F%C3%ADsica&o=5&page=1';
     
-    // Analyze the HTML structure
-    const analysis: any = {
-      status: response.status,
-      htmlLength: html.length,
-      hasNextData: html.includes('__NEXT_DATA__'),
-      hasPreloadedState: html.includes('__PRELOADED_STATE__'),
-      hasInitialState: html.includes('__INITIAL_STATE__'),
-      priceOccurrences: (html.match(/R\$/g) || []).length,
-      scriptTags: (html.match(/<script/g) || []).length,
-    };
+    // Test ML API
+    const mlApiUrl = 'https://api.mercadolibre.com/sites/MLB/search?category=MLB1744&q=honda+fit+2009&price=*-39000&state=SP';
 
-    // Extract price contexts - find R$ followed by prices in car range
-    const pricePattern = /R\$\s*([\d\.]+(?:,\d{2})?)/g;
-    let priceMatch;
-    const prices: string[] = [];
-    while ((priceMatch = pricePattern.exec(html)) !== null && prices.length < 20) {
-      prices.push(priceMatch[0]);
-    }
-    analysis.prices = prices;
+    const results: any = {};
 
-    // Look for JSON-LD
-    const jsonLdMatches = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) || [];
-    analysis.jsonLdCount = jsonLdMatches.length;
-    if (jsonLdMatches.length > 0) {
-      analysis.jsonLdSamples = jsonLdMatches.slice(0, 3).map(m => {
-        const content = m.replace(/<\/?script[^>]*>/gi, '');
-        return content.slice(0, 500);
-      });
-    }
-
-    // Look for __NEXT_DATA__
-    if (html.includes('__NEXT_DATA__')) {
-      const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-      if (nextDataMatch) {
-        const content = nextDataMatch[1];
-        analysis.nextDataLength = content.length;
-        // Find keys at top level
-        try {
-          const parsed = JSON.parse(content);
-          analysis.nextDataKeys = Object.keys(parsed);
-          if (parsed.props) analysis.nextDataPropsKeys = Object.keys(parsed.props);
-          if (parsed.props?.pageProps) {
-            analysis.pagePropsKeys = Object.keys(parsed.props.pageProps);
-            // Look for arrays that might be results
-            for (const key of Object.keys(parsed.props.pageProps)) {
-              const val = parsed.props.pageProps[key];
-              if (Array.isArray(val)) {
-                analysis[`pageProps_${key}_length`] = val.length;
-                if (val.length > 0) {
-                  analysis[`pageProps_${key}_sample`] = JSON.stringify(val[0]).slice(0, 1000);
-                }
-              } else if (val && typeof val === 'object') {
-                analysis[`pageProps_${key}_keys`] = Object.keys(val).slice(0, 20);
-              }
-            }
-          }
-        } catch (e) {
-          analysis.nextDataParseError = String(e);
+    // Test Webmotors API
+    try {
+      const wmRes = await fetch(wmApiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://www.webmotors.com.br/',
         }
+      });
+      results.webmotors_api_status = wmRes.status;
+      if (wmRes.ok) {
+        const wmData = await wmRes.json();
+        results.webmotors_api_type = typeof wmData;
+        results.webmotors_api_keys = Object.keys(wmData).slice(0, 20);
+        if (wmData.SearchResults) {
+          results.webmotors_results_count = wmData.SearchResults.length;
+          if (wmData.SearchResults[0]) {
+            results.webmotors_first_item = JSON.stringify(wmData.SearchResults[0]).slice(0, 2000);
+          }
+        } else if (Array.isArray(wmData)) {
+          results.webmotors_array_length = wmData.length;
+          if (wmData[0]) results.webmotors_first_item = JSON.stringify(wmData[0]).slice(0, 2000);
+        }
+        results.webmotors_raw_sample = JSON.stringify(wmData).slice(0, 3000);
+      } else {
+        results.webmotors_api_body = await wmRes.text().then(t => t.slice(0, 500));
       }
+    } catch (e) {
+      results.webmotors_api_error = String(e);
     }
 
-    // For MercadoLivre: look for specific patterns
-    if (url.includes('mercadolivre') || url.includes('lista.mercadolivre')) {
-      // Check for poly-card elements
-      analysis.polyCardCount = (html.match(/poly-card/g) || []).length;
-      analysis.uiSearchCount = (html.match(/ui-search/g) || []).length;
-      analysis.mlbLinkCount = (html.match(/MLB-?\d+/g) || []).length;
-      
-      // Extract a sample of MLB links
-      const mlbLinks = html.match(/href="[^"]*MLB[- ]?\d+[^"]*"/g) || [];
-      analysis.mlbLinkSamples = mlbLinks.slice(0, 5);
-      
-      // Look for price containers
-      const priceContainers = html.match(/class="[^"]*price[^"]*"[^>]*>[^<]*/gi) || [];
-      analysis.priceContainerSamples = priceContainers.slice(0, 5);
-
-      // Check for andes (ML design system) components
-      analysis.andesCount = (html.match(/andes/gi) || []).length;
-      
-      // Sample around first MLB link
-      const firstMlb = html.indexOf('MLB');
-      if (firstMlb > 0) {
-        analysis.mlbContext = html.slice(Math.max(0, firstMlb - 200), firstMlb + 300);
-      }
+    // Test Webmotors search API v2
+    try {
+      const wmRes2 = await fetch('https://www.webmotors.com.br/api/search/car?tipoveiculo=carros&estadocidade=S%C3%A3o+Paulo&marca1=HONDA&modelo1=FIT&anode=2009&anoate=2009&precoate=39000&o=5&page=1', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Referer': 'https://www.webmotors.com.br/',
+          'Origin': 'https://www.webmotors.com.br',
+        }
+      });
+      results.webmotors_api2_status = wmRes2.status;
+      const body2 = await wmRes2.text();
+      results.webmotors_api2_body = body2.slice(0, 2000);
+    } catch (e) {
+      results.webmotors_api2_error = String(e);
     }
 
-    // For Webmotors: analyze structure
-    if (url.includes('webmotors')) {
-      analysis.comprarCount = (html.match(/\/comprar\//g) || []).length;
-      analysis.cardCount = (html.match(/card/gi) || []).length;
-      
-      // Look for price in different formats  
-      const price35 = html.indexOf('35.000') > -1 || html.indexOf('35000') > -1;
-      const price37 = html.indexOf('37.000') > -1 || html.indexOf('37000') > -1;
-      analysis.hasExpectedPrices = { '35000': price35, '37000': price37 };
-      
-      // Find context around prices
-      const idx35 = Math.max(html.indexOf('35.000'), html.indexOf('35000'));
-      if (idx35 > 0) {
-        analysis.price35kContext = html.slice(Math.max(0, idx35 - 300), idx35 + 300);
+    // Test ML API
+    try {
+      const mlRes = await fetch(mlApiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json',
+        }
+      });
+      results.ml_api_status = mlRes.status;
+      if (mlRes.ok) {
+        const mlData = await mlRes.json();
+        results.ml_results_count = mlData.results?.length;
+        results.ml_paging = mlData.paging;
+        if (mlData.results?.[0]) {
+          results.ml_first_item = JSON.stringify(mlData.results[0]).slice(0, 2000);
+        }
+      } else {
+        results.ml_api_body = await mlRes.text().then(t => t.slice(0, 500));
       }
-      
-      const idx37 = Math.max(html.indexOf('37.000'), html.indexOf('37000'));
-      if (idx37 > 0) {
-        analysis.price37kContext = html.slice(Math.max(0, idx37 - 300), idx37 + 300);
-      }
+    } catch (e) {
+      results.ml_api_error = String(e);
     }
 
     return new Response(
-      JSON.stringify(analysis, null, 2),
+      JSON.stringify(results, null, 2),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
