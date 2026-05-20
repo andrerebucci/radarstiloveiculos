@@ -9,55 +9,67 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
+    const { url: rawUrl } = await req.json();
 
-    if (!url) {
+    if (!rawUrl) {
       return new Response(
         JSON.stringify({ success: false, error: 'URL is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Strip URL fragment — server-irrelevant and confuses some proxies
+    const url = String(rawUrl).split('#')[0];
+
     console.log('Fetching URL:', url);
 
-    // Try multiple methods in order
-    const methods = [
-      () => fetchDirect(url),
-      () => fetchViaAllorigins(url),
-      () => fetchViaAlloriginsJson(url),
-      () => fetchViaCodetabs(url),
-      () => fetchDirectMobile(url),
+    const methods: Array<{ name: string; fn: () => Promise<string> }> = [
+      { name: 'direct', fn: () => fetchDirect(url) },
+      { name: 'direct-mobile', fn: () => fetchDirectMobile(url) },
+      { name: 'allorigins-raw', fn: () => fetchViaAllorigins(url) },
+      { name: 'allorigins-json', fn: () => fetchViaAlloriginsJson(url) },
+      { name: 'codetabs', fn: () => fetchViaCodetabs(url) },
     ];
 
-    for (const method of methods) {
+    let lastError = '';
+    for (const m of methods) {
       try {
-        const result = await method();
-        if (result && result.length > 1000) {
-          // Check if it's a real page (not captcha/block page)
-          const isBlocked = result.length < 10000 && (
-            result.includes('captcha') || 
-            result.includes('blocked') ||
-            result.includes('suspicious-traffic') ||
-            result.includes('px-captcha')
-          );
-          
-          if (!isBlocked) {
-            console.log(`Fetched HTML: ${result.length} chars`);
-            return new Response(
-              JSON.stringify({ success: true, html: result, source: 'edge-function' }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          } else {
-            console.log('Blocked page detected, trying next method...');
-          }
+        const html = await m.fn();
+        if (!html || html.length < 5000) {
+          lastError = `${m.name}: response too small (${html?.length || 0} chars)`;
+          console.log(lastError);
+          continue;
         }
+
+        const lower = html.toLowerCase();
+        const isBlocked =
+          lower.includes('suspicious-traffic') ||
+          lower.includes('px-captcha') ||
+          lower.includes('/recaptcha/') ||
+          lower.includes('cf-challenge') ||
+          lower.includes('access denied') ||
+          lower.includes('ui-empty-state') && html.length < 20000 ||
+          (lower.includes('captcha') && html.length < 50000);
+
+        if (isBlocked) {
+          lastError = `${m.name}: blocked/captcha/empty page (${html.length} chars)`;
+          console.log(lastError);
+          continue;
+        }
+
+        console.log(`OK via ${m.name}: ${html.length} chars`);
+        return new Response(
+          JSON.stringify({ success: true, html, source: m.name }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       } catch (e) {
-        console.log('Method failed:', e instanceof Error ? e.message : String(e));
+        lastError = `${m.name}: ${e instanceof Error ? e.message : String(e)}`;
+        console.log(lastError);
       }
     }
 
     return new Response(
-      JSON.stringify({ success: false, error: 'All fetch methods failed or returned blocked pages' }),
+      JSON.stringify({ success: false, error: `All fetch methods failed. Last: ${lastError}` }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
