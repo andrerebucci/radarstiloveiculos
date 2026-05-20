@@ -49,7 +49,7 @@ function extractViaSpecializedParsers(html: string, site: SiteKey): ParsedListin
   const now = new Date().toISOString();
   
   if (site === 'webmotors') {
-    WebmotorsParser.debugExtraction(html);
+    
     return WebmotorsParser.extractListings(html).map(listing => ({
       url: listing.url,
       title: listing.title,
