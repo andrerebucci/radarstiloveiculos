@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     for (const m of methods) {
       try {
         const html = await m.fn();
-        if (!html || html.length < 1000) {
+        if (!html || html.length < 5000) {
           lastError = `${m.name}: response too small (${html?.length || 0} chars)`;
           console.log(lastError);
           continue;
@@ -48,10 +48,11 @@ Deno.serve(async (req) => {
           lower.includes('/recaptcha/') ||
           lower.includes('cf-challenge') ||
           lower.includes('access denied') ||
+          lower.includes('ui-empty-state') && html.length < 20000 ||
           (lower.includes('captcha') && html.length < 50000);
 
         if (isBlocked) {
-          lastError = `${m.name}: blocked/captcha page (${html.length} chars)`;
+          lastError = `${m.name}: blocked/captcha/empty page (${html.length} chars)`;
           console.log(lastError);
           continue;
         }
