@@ -169,3 +169,32 @@ async function fetchViaCodetabs(url: string): Promise<string> {
   if (!response.ok) throw new Error(`Codetabs HTTP ${response.status}`);
   return await response.text();
 }
+
+async function fetchViaFirecrawl(url: string): Promise<string> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+
+  const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['html'],
+      onlyMainContent: false,
+      waitFor: 3000,
+      location: { country: 'BR', languages: ['pt-BR'] },
+    }),
+  });
+
+  if (!response.ok) {
+    const txt = await response.text().catch(() => '');
+    throw new Error(`Firecrawl HTTP ${response.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const html = data?.data?.html || data?.html || data?.data?.rawHtml || '';
+  if (!html) throw new Error('Firecrawl returned no HTML');
+  return html;
+}
