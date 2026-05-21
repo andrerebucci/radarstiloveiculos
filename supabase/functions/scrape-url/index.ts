@@ -174,19 +174,26 @@ async function fetchViaFirecrawl(url: string): Promise<string> {
   const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
   if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
 
+  const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+  // Mercado Livre blocks even Firecrawl basic — needs stealth proxy
+  const needsStealth = /mercadolivre\.com\.br|mercadolibre\.com/.test(host);
+
+  const body: Record<string, unknown> = {
+    url,
+    formats: ['html'],
+    onlyMainContent: false,
+    waitFor: needsStealth ? 5000 : 3500,
+    location: { country: 'BR', languages: ['pt-BR'] },
+  };
+  if (needsStealth) body.proxy = 'stealth';
+
   const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      url,
-      formats: ['html'],
-      onlyMainContent: false,
-      waitFor: 3000,
-      location: { country: 'BR', languages: ['pt-BR'] },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
