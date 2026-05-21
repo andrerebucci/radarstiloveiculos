@@ -23,13 +23,19 @@ Deno.serve(async (req) => {
 
     console.log('Fetching URL:', url);
 
-    const methods: Array<{ name: string; fn: () => Promise<string> }> = [
+    const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+    const needsJs = /webmotors\.com\.br|mercadolivre\.com\.br|mercadolibre\.com/.test(host);
+
+    const baseMethods: Array<{ name: string; fn: () => Promise<string> }> = [
       { name: 'direct', fn: () => fetchDirect(url) },
       { name: 'direct-mobile', fn: () => fetchDirectMobile(url) },
       { name: 'allorigins-raw', fn: () => fetchViaAllorigins(url) },
       { name: 'allorigins-json', fn: () => fetchViaAlloriginsJson(url) },
       { name: 'codetabs', fn: () => fetchViaCodetabs(url) },
     ];
+    const firecrawlMethod = { name: 'firecrawl', fn: () => fetchViaFirecrawl(url) };
+    // For SPAs (Webmotors/ML) try Firecrawl first since plain fetches are unreliable
+    const methods = needsJs ? [firecrawlMethod, ...baseMethods] : [...baseMethods, firecrawlMethod];
 
     let lastError = '';
     for (const m of methods) {
