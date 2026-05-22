@@ -60,7 +60,7 @@ export class WebmotorsParser {
       const doc = parser.parseFromString(html, 'text/html');
       const anchors = Array.from(doc.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
 
-      const byId = new Map<string, { url: string; title?: string; price?: string; year?: string }>();
+      const byId = new Map<string, { url: string; title?: string; price?: string; year?: string; mileage?: string; location?: string }>();
       for (const a of anchors) {
         const href = a.getAttribute('href') || '';
         const m = href.match(COMPRAR_LINK);
@@ -92,38 +92,49 @@ export class WebmotorsParser {
 
       if (byId.size === 0) return [];
 
-      // For each id, find a card container and extract price
+      // For each id, find the card and extract price, mileage, location
       for (const [id, entry] of byId) {
-        // Find the deepest anchor whose href contains this id, then walk up to a card root
         const anchor = doc.querySelector(`a[href*="/${id}"]`) as HTMLAnchorElement | null;
         if (!anchor) continue;
 
         let node: HTMLElement | null = anchor;
-        let priceText: string | undefined;
+        let cardText = '';
         for (let depth = 0; depth < 12 && node; depth++) {
           node = node.parentElement;
           if (!node) break;
-          // Look for price element only inside this candidate ancestor
-          const priceEl = node.querySelector('p, span');
-          if (priceEl) {
-            const txt = (node.textContent || '').replace(/\u00a0/g, ' ');
-            const pm = txt.match(/R\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{2})?)/);
-            if (pm) {
-              // Make sure this isn't the filter chip (price-max = 39.000 with "máximo")
-              const ctx = txt.slice(Math.max(0, txt.indexOf(pm[0]) - 40), txt.indexOf(pm[0]) + pm[0].length + 40).toLowerCase();
-              if (!/máximo|minimo|mínimo/i.test(ctx)) {
-                priceText = `R$ ${pm[1]}`;
-                break;
-              }
-            }
+          const txt = (node.textContent || '').replace(/\u00a0/g, ' ');
+          // Smallest ancestor containing price + Km is likely the card
+          if (/R\$\s*\d{1,3}(?:\.\d{3})/.test(txt) && /\d{1,3}(?:\.\d{3})*\s*Km/i.test(txt)) {
+            cardText = txt;
+            break;
           }
         }
-        if (priceText) entry.price = priceText;
+        if (!cardText && node) cardText = (node.textContent || '').replace(/\u00a0/g, ' ');
+        if (!cardText) continue;
+
+        // Price (skip filter chip)
+        const priceMatches = Array.from(cardText.matchAll(/R\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{2})?)/g));
+        for (const pm of priceMatches) {
+          const pIdx = pm.index ?? 0;
+          const ctx = cardText.slice(Math.max(0, pIdx - 40), pIdx + pm[0].length + 40).toLowerCase();
+          if (/máximo|mínimo|minimo|maximo/.test(ctx)) continue;
+          entry.price = `R$ ${pm[1]}`;
+          break;
+        }
+
+        // Mileage
+        const km = cardText.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km\b/i);
+        if (km) entry.mileage = `${km[1]} Km`;
+
+        // Location: "Cidade (UF)"
+        const loc = cardText.match(/([A-ZÀ-Ú][A-Za-zÀ-ú'.\s-]{2,50}?)\s*\(([A-Z]{2})\)/);
+        if (loc) entry.location = `${loc[1].trim()} (${loc[2]})`;
       }
 
       return Array.from(byId.values())
         .filter(e => e.url)
-        .map(e => ({ url: e.url, title: e.title, price: e.price, year: e.year }));
+        .map(e => ({ url: e.url, title: e.title, price: e.price, year: e.year, mileage: e.mileage, location: e.location }));
+
     } catch (e) {
       console.log('Webmotors DOM error:', e);
       return [];

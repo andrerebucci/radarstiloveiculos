@@ -55,6 +55,7 @@ function extractViaSpecializedParsers(html: string, site: SiteKey): ParsedListin
       title: listing.title,
       price: listing.price,
       mileage: listing.mileage,
+      location: listing.location,
       site: 'webmotors' as SiteKey,
       detectedAt: now
     }));
