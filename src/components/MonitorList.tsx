@@ -341,6 +341,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                                 <ArrowUpDown className="h-3 w-3" />
                               </div>
                             </TableHead>
+                            <TableHead>Localização</TableHead>
                             <TableHead>Dias Anunciados</TableHead>
                           </TableRow>
                         </TableHeader>
