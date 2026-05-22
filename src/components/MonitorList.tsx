@@ -341,6 +341,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                                 <ArrowUpDown className="h-3 w-3" />
                               </div>
                             </TableHead>
+                            <TableHead>Localização</TableHead>
                             <TableHead>Dias Anunciados</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -373,6 +374,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                               <TableCell>
                                 {format(new Date(listing.detectedAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                               </TableCell>
+                              <TableCell className="text-sm">{listing.location || '-'}</TableCell>
                               <TableCell>
                                 {differenceInDays(new Date(), new Date(listing.detectedAt))} dia(s)
                               </TableCell>
@@ -473,6 +475,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                       )}
                     </div>
                   </TableHead>
+                  <TableHead>Localização</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -513,6 +516,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(listing.detectedAt).toLocaleString('pt-BR')}
                     </TableCell>
+                    <TableCell className="text-sm">{listing.location || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

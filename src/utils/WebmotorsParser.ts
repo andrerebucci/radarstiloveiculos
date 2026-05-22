@@ -58,61 +58,48 @@ export class WebmotorsParser {
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-      const anchors = Array.from(doc.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
+
+      // Prefer iterating the actual card containers (one per anúncio).
+      const cardNodes = Array.from(
+        doc.querySelectorAll('[class*="_Card_1wsqi_82"], [class*="_Card_18bss_1"][class*="_Horizontal"]')
+      ) as HTMLElement[];
 
       const byId = new Map<string, { url: string; title?: string; price?: string; year?: string; mileage?: string; location?: string }>();
-      for (const a of anchors) {
-        const href = a.getAttribute('href') || '';
-        const m = href.match(COMPRAR_LINK);
-        if (!m) continue;
-        const id = m[1];
+
+      const handleCard = (card: HTMLElement) => {
+        // Find the canonical /comprar/ link inside this card
+        const anchors = Array.from(card.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
+        let id = '';
+        let href = '';
+        for (const a of anchors) {
+          const h = a.getAttribute('href') || '';
+          const m = h.match(COMPRAR_LINK);
+          if (m) { id = m[1]; href = h; break; }
+        }
+        if (!id) return;
+
         const url = href.startsWith('http') ? href : `https://www.webmotors.com.br${href.startsWith('/') ? '' : '/'}${href}`;
         const cleanUrl = url.split('#')[0].split('?')[0];
 
-        if (!byId.has(id)) {
-          byId.set(id, { url: cleanUrl });
-        }
-        const entry = byId.get(id)!;
+        const entry = byId.get(id) || { url: cleanUrl };
+        entry.url = cleanUrl;
 
-        // Title from img title/alt attribute (most reliable on Webmotors cards)
+        // Title from img alt/title
         if (!entry.title) {
-          const img = a.querySelector('img[title], img[alt]') as HTMLImageElement | null;
+          const img = card.querySelector('img[title], img[alt]') as HTMLImageElement | null;
           const t = img?.getAttribute('title') || img?.getAttribute('alt');
-          if (t && /honda|fit|toyota|chevrolet|fiat|ford|hyundai|jeep|nissan|renault|volkswagen|peugeot|kia|bmw|mercedes|audi/i.test(t)) {
-            entry.title = t.trim();
-          }
+          if (t && t.trim().length > 3) entry.title = t.trim();
         }
 
-        // Year from URL slug: /<modelo>/<versao>/<portas>/<ano>/<id>
+        // Year from URL slug
         if (!entry.year) {
           const ym = href.match(/\/(\d{4}(?:-\d{4})?)\/\d{6,}/);
           if (ym) entry.year = ym[1];
         }
-      }
 
-      if (byId.size === 0) return [];
+        const cardText = (card.textContent || '').replace(/\u00a0/g, ' ');
 
-      // For each id, find the card and extract price, mileage, location
-      for (const [id, entry] of byId) {
-        const anchor = doc.querySelector(`a[href*="/${id}"]`) as HTMLAnchorElement | null;
-        if (!anchor) continue;
-
-        let node: HTMLElement | null = anchor;
-        let cardText = '';
-        for (let depth = 0; depth < 12 && node; depth++) {
-          node = node.parentElement;
-          if (!node) break;
-          const txt = (node.textContent || '').replace(/\u00a0/g, ' ');
-          // Smallest ancestor containing price + Km is likely the card
-          if (/R\$\s*\d{1,3}(?:\.\d{3})/.test(txt) && /\d{1,3}(?:\.\d{3})*\s*Km/i.test(txt)) {
-            cardText = txt;
-            break;
-          }
-        }
-        if (!cardText && node) cardText = (node.textContent || '').replace(/\u00a0/g, ' ');
-        if (!cardText) continue;
-
-        // Price (skip filter chip)
+        // Price (skip filter chip text)
         const priceMatches = Array.from(cardText.matchAll(/R\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{2})?)/g));
         for (const pm of priceMatches) {
           const pIdx = pm.index ?? 0;
@@ -129,17 +116,44 @@ export class WebmotorsParser {
         // Location: "Cidade (UF)"
         const loc = cardText.match(/([A-ZÀ-Ú][A-Za-zÀ-ú'.\s-]{2,50}?)\s*\(([A-Z]{2})\)/);
         if (loc) entry.location = `${loc[1].trim()} (${loc[2]})`;
+
+        byId.set(id, entry);
+      };
+
+      if (cardNodes.length > 0) {
+        for (const c of cardNodes) handleCard(c);
+      } else {
+        // Fallback: no card class found — walk from each /comprar/ anchor up to a likely card root
+        const anchors = Array.from(doc.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
+        const seen = new Set<string>();
+        for (const a of anchors) {
+          const h = a.getAttribute('href') || '';
+          const m = h.match(COMPRAR_LINK);
+          if (!m) continue;
+          if (seen.has(m[1])) continue;
+          seen.add(m[1]);
+          let node: HTMLElement | null = a;
+          for (let i = 0; i < 15 && node; i++) {
+            node = node.parentElement;
+            if (!node) break;
+            const txt = node.textContent || '';
+            if (/R\$\s*\d/.test(txt) && /Km/i.test(txt) && txt.length < 4000) {
+              handleCard(node);
+              break;
+            }
+          }
+        }
       }
 
       return Array.from(byId.values())
         .filter(e => e.url)
         .map(e => ({ url: e.url, title: e.title, price: e.price, year: e.year, mileage: e.mileage, location: e.location }));
-
     } catch (e) {
       console.log('Webmotors DOM error:', e);
       return [];
     }
   }
+
 
   private static extractViaRegex(html: string): WebmotorsListing[] {
     const byId = new Map<string, WebmotorsListing>();
