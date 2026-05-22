@@ -128,9 +128,18 @@ export class MercadoLivreParser {
       const mileageMatch = text.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
       if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
 
-      // Location
-      const locationMatch = text.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [a-zà-ú]+)*(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})/);
-      if (locationMatch) listing.location = `${locationMatch[1]} - ${locationMatch[2]}`;
+      // Location: prefer dedicated ML element, else "Bairro - Cidade" pattern
+      const locEl = item.querySelector('[class*="poly-component__location"], [class*="ui-search-item__location"], [class*="ui-search-item__group__element--location"]');
+      const locText = locEl?.textContent?.trim();
+      if (locText) {
+        listing.location = locText;
+      } else {
+        const locationMatch =
+          text.match(/([A-ZÀ-Ú][\wÀ-ú'.\s]{2,40})\s*[-–]\s*([A-ZÀ-Ú][\wÀ-ú'.\s]{2,60}?)(?=\s{2,}|R\$|\d{1,3}(?:\.\d{3})+|$)/) ||
+          text.match(/([A-ZÀ-Ú][a-zà-ú]+(?: [a-zà-ú]+)*(?: [A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})/);
+        if (locationMatch) listing.location = `${locationMatch[1].trim()} - ${locationMatch[2].trim()}`;
+      }
+
 
       listings.push(listing);
       if (listings.length >= 20) break;
