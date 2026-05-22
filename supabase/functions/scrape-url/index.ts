@@ -182,7 +182,7 @@ async function fetchViaFirecrawl(url: string): Promise<string> {
     url,
     formats: ['html'],
     onlyMainContent: false,
-    waitFor: needsStealth ? 5000 : 3500,
+    waitFor: needsStealth ? 8000 : 4000,
     location: { country: 'BR', languages: ['pt-BR'] },
   };
   if (needsStealth) body.proxy = 'stealth';
