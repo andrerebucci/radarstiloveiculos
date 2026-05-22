@@ -374,6 +374,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                               <TableCell>
                                 {format(new Date(listing.detectedAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                               </TableCell>
+                              <TableCell className="text-sm">{listing.location || '-'}</TableCell>
                               <TableCell>
                                 {differenceInDays(new Date(), new Date(listing.detectedAt))} dia(s)
                               </TableCell>
