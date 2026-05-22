@@ -178,6 +178,11 @@ export class MercadoLivreParser {
     const mileageMatch = text.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
     if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
 
+    // Location via dedicated element
+    const locEl = (container as Element | null)?.querySelector?.('[class*="poly-component__location"], [class*="ui-search-item__location"]');
+    const locText = locEl?.textContent?.trim();
+    if (locText) listing.location = locText;
+
     return (listing.price || listing.title) ? listing : null;
   }
 
