@@ -475,6 +475,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                       )}
                     </div>
                   </TableHead>
+                  <TableHead>Localização</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
