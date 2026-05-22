@@ -60,7 +60,7 @@ export class WebmotorsParser {
       const doc = parser.parseFromString(html, 'text/html');
       const anchors = Array.from(doc.querySelectorAll('a[href*="/comprar/"]')) as HTMLAnchorElement[];
 
-      const byId = new Map<string, { url: string; title?: string; price?: string; year?: string }>();
+      const byId = new Map<string, { url: string; title?: string; price?: string; year?: string; mileage?: string; location?: string }>();
       for (const a of anchors) {
         const href = a.getAttribute('href') || '';
         const m = href.match(COMPRAR_LINK);
