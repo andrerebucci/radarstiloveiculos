@@ -516,6 +516,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(listing.detectedAt).toLocaleString('pt-BR')}
                     </TableCell>
+                    <TableCell className="text-sm">{listing.location || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
