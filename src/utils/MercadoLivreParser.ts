@@ -225,6 +225,11 @@ export class MercadoLivreParser {
       // Mileage
       const mileageMatch = context.match(/(\d{1,3}(?:\.\d{3})*)\s*[Kk]m/);
       if (mileageMatch) listing.mileage = `${mileageMatch[1]} km`;
+
+      // Location: try to grab text from a location-classed element near the link
+      const locMatch = context.match(/class="[^"]*poly-component__location[^"]*"[^>]*>([^<]{3,80})</)
+        || context.match(/class="[^"]*ui-search-item__location[^"]*"[^>]*>([^<]{3,80})</);
+      if (locMatch) listing.location = locMatch[1].trim();
       
       if (listing.price || listing.title) {
         listings.push(listing);
