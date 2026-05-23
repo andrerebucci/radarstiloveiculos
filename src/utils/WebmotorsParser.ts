@@ -9,6 +9,7 @@ export interface WebmotorsListing {
 
 const COMPRAR_LINK = /\/comprar\/[^"'\s)]+\/(\d{6,})/;
 const COMPRAR_GLOBAL = /\/comprar\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+\/[\d-]+\/(\d{6,})/gi;
+const KM_PATTERN = /(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*(?:km|kms|quil[oô]metros?)/i;
 
 export class WebmotorsParser {
   static extractListings(html: string): WebmotorsListing[] {
@@ -124,8 +125,8 @@ export class WebmotorsParser {
           break;
         }
 
-        // Mileage — note: no \b after Km because textContent often glues "Km" to next word ("KmSão...")
-        const km = cardText.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km(?![a-z])/i);
+        // Mileage — no boundary/lookahead after Km: Webmotors often glues it to the city ("180.000 KmMogi...").
+        const km = cardText.match(KM_PATTERN);
         if (km) entry.mileage = `${km[1]} Km`;
 
         // Location: "Cidade (UF)"
@@ -208,7 +209,7 @@ export class WebmotorsParser {
       const sIdx = stripped.indexOf(`/${id}`);
       if (sIdx >= 0) {
         const sWin = stripped.slice(Math.max(0, sIdx - 1500), sIdx + 2500);
-        const km = sWin.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km(?![a-z])/i);
+        const km = sWin.match(KM_PATTERN);
         if (km) listing.mileage = `${km[1]} Km`;
         const loc = sWin.match(/([A-ZÀ-Ú][A-Za-zÀ-ú'.\s-]{2,50}?)\s*\(([A-Z]{2})\)/);
         if (loc) listing.location = `${loc[1].trim()} (${loc[2]})`;
