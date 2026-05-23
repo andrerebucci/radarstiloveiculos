@@ -175,33 +175,43 @@ async function fetchViaFirecrawl(url: string): Promise<string> {
   if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
 
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
-  // Mercado Livre blocks even Firecrawl basic — needs stealth proxy
   const needsStealth = /mercadolivre\.com\.br|mercadolibre\.com/.test(host);
 
-  const body: Record<string, unknown> = {
-    url,
-    formats: ['html'],
-    onlyMainContent: false,
-    waitFor: needsStealth ? 8000 : 4000,
-    location: { country: 'BR', languages: ['pt-BR'] },
+  const attempt = async (waitFor: number): Promise<string> => {
+    const body: Record<string, unknown> = {
+      url,
+      formats: ['html'],
+      onlyMainContent: false,
+      waitFor,
+      location: { country: 'BR', languages: ['pt-BR'] },
+    };
+    if (needsStealth) body.proxy = 'stealth';
+
+    const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`Firecrawl HTTP ${response.status}: ${txt.slice(0, 200)}`);
+    }
+    const data = await response.json();
+    return data?.data?.html || data?.html || data?.data?.rawHtml || '';
   };
-  if (needsStealth) body.proxy = 'stealth';
 
-  const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const txt = await response.text().catch(() => '');
-    throw new Error(`Firecrawl HTTP ${response.status}: ${txt.slice(0, 200)}`);
+  let html = await attempt(needsStealth ? 8000 : 4000);
+  // Retry once for ML if first attempt looks like a stub/empty page
+  if (needsStealth && (!html || html.length < 50000)) {
+    console.log(`Firecrawl ML stub (${html?.length || 0} chars), retrying with longer wait...`);
+    try {
+      const retry = await attempt(12000);
+      if (retry && retry.length > html.length) html = retry;
+    } catch (e) {
+      console.log('Firecrawl retry failed:', e instanceof Error ? e.message : String(e));
+    }
   }
-  const data = await response.json();
-  const html = data?.data?.html || data?.html || data?.data?.rawHtml || '';
   if (!html) throw new Error('Firecrawl returned no HTML');
   return html;
 }
