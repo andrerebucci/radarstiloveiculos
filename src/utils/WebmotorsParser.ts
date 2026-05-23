@@ -36,15 +36,30 @@ export class WebmotorsParser {
       } catch { /* fall through */ }
     }
 
-    // Strategy 2: DOM-based extraction from rendered HTML (Firecrawl output)
+    // Strategy 2 + 3: DOM extraction, with regex-based enrichment for mileage/location.
     const domResults = this.extractViaDom(html);
+    const regexResults = this.extractViaRegex(html);
+
     if (domResults.length > 0) {
-      console.log(`Webmotors DOM: ${domResults.length} anúncios`);
+      const byId = new Map<string, WebmotorsListing>();
+      for (const r of regexResults) {
+        const m = r.url.match(/\/(\d{6,})(?:[/?#]|$)/);
+        if (m) byId.set(m[1], r);
+      }
+      for (const d of domResults) {
+        if (d.mileage && d.location) continue;
+        const m = d.url.match(/\/(\d{6,})(?:[/?#]|$)/);
+        const enrich = m ? byId.get(m[1]) : undefined;
+        if (enrich) {
+          if (!d.mileage && enrich.mileage) d.mileage = enrich.mileage;
+          if (!d.location && enrich.location) d.location = enrich.location;
+        }
+      }
+      const kmHits = domResults.filter(r => r.mileage).length;
+      console.log(`Webmotors DOM: ${domResults.length} anúncios (KM: ${kmHits})`);
       return domResults;
     }
 
-    // Strategy 3: Regex fallback grouping by vehicle id
-    const regexResults = this.extractViaRegex(html);
     if (regexResults.length > 0) {
       console.log(`Webmotors regex: ${regexResults.length} anúncios`);
       return regexResults;
