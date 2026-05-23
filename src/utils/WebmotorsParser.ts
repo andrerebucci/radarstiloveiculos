@@ -109,8 +109,8 @@ export class WebmotorsParser {
           break;
         }
 
-        // Mileage
-        const km = cardText.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km\b/i);
+        // Mileage — note: no \b after Km because textContent often glues "Km" to next word ("KmSão...")
+        const km = cardText.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km(?![a-z])/i);
         if (km) entry.mileage = `${km[1]} Km`;
 
         // Location: "Cidade (UF)"
