@@ -181,8 +181,10 @@ export class WebmotorsParser {
     }
     if (byId.size === 0) return [];
 
-    // Decode HTML entities for nbsp -> space
-    const decoded = html.replace(/&nbsp;/g, ' ');
+    // Decode HTML entities and strip tags so KM/location captures aren't broken by markup
+    const decoded = html.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+    const stripped = decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
     for (const [id, listing] of byId) {
       const idx = decoded.indexOf(`/${id}`);
       if (idx < 0) continue;
@@ -201,6 +203,16 @@ export class WebmotorsParser {
       }
       const ym = window.match(/\/(\d{4}(?:-\d{4})?)\/\d{6,}/);
       if (ym) listing.year = ym[1];
+
+      // Mileage + location: search in stripped (tag-free) text around this id
+      const sIdx = stripped.indexOf(`/${id}`);
+      if (sIdx >= 0) {
+        const sWin = stripped.slice(Math.max(0, sIdx - 1500), sIdx + 2500);
+        const km = sWin.match(/(\d{1,3}(?:\.\d{3})+|\d{4,6})\s*Km(?![a-z])/i);
+        if (km) listing.mileage = `${km[1]} Km`;
+        const loc = sWin.match(/([A-ZÀ-Ú][A-Za-zÀ-ú'.\s-]{2,50}?)\s*\(([A-Z]{2})\)/);
+        if (loc) listing.location = `${loc[1].trim()} (${loc[2]})`;
+      }
     }
     return Array.from(byId.values());
   }
