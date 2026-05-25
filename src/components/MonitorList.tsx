@@ -13,6 +13,16 @@ import { differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { loadHistory, reconcileHistory, daysListed, clearHistory } from '../utils/history';
+import { ResizableSheet } from './ResizableSheet';
+import { ListingNote } from './ListingNote';
+
+type HistorySortKey = 'price' | 'mileage' | 'days';
+type SortDir = 'asc' | 'desc';
+
+function parseNumber(s?: string) {
+  if (!s) return 0;
+  return parseFloat(s.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+}
 
 const STORAGE_KEY = 'cw_monitors_v1';
 
@@ -48,6 +58,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, HistoryEntry[]>>({});
   const [editingIntervalFor, setEditingIntervalFor] = useState<string | null>(null);
   const [intervalDraft, setIntervalDraft] = useState<string>('24');
+  const [historySort, setHistorySort] = useState<Record<string, { key: HistorySortKey; dir: SortDir }>>({});
   const [, forceTick] = useState(0);
 
   const checkingRef = useRef<string | null>(null);
@@ -260,87 +271,121 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                     )}
                   </Button>
 
-                  <Sheet>
-                    <SheetTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <HistoryIcon className="h-4 w-4" /> Histórico
-                        {soldOrGone.length > 0 && <Badge variant="secondary" className="ml-1">{soldOrGone.length}</Badge>}
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent className="w-[600px] sm:w-[640px] overflow-y-auto">
-                      <SheetHeader>
-                        <SheetTitle>Histórico — {monitor.name}</SheetTitle>
-                      </SheetHeader>
-                      <div className="mt-4 flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { clearHistory(monitor.id); setHistoryByMonitor((p) => ({ ...p, [monitor.id]: [] })); toast.success('Histórico limpo'); }}
-                        >
-                          Limpar histórico
-                        </Button>
-                      </div>
-                      {history.length === 0 ? (
-                        <p className="text-muted-foreground mt-6">Nenhum anúncio registrado ainda. Execute uma verificação.</p>
-                      ) : (
-                        <>
-                          <h4 className="font-semibold mt-4 mb-2">Saíram das buscas ({soldOrGone.length})</h4>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Site</TableHead>
-                                <TableHead>Anúncio</TableHead>
-                                <TableHead>Preço</TableHead>
-                                <TableHead>Dias no ar</TableHead>
-                                <TableHead>Saiu em</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {soldOrGone.map((h, i) => (
-                                <TableRow key={`gone-${i}`}>
-                                  <TableCell><Badge variant="outline">{siteLabel(h.site)}</Badge></TableCell>
-                                  <TableCell className="max-w-[220px] truncate">
-                                    <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                      {h.title || h.url}
-                                    </a>
-                                  </TableCell>
-                                  <TableCell>{h.price || '-'}</TableCell>
-                                  <TableCell>{daysListed(h)}</TableCell>
-                                  <TableCell className="text-xs">{h.removedAt ? format(new Date(h.removedAt), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : '-'}</TableCell>
+                  {(() => {
+                    const cfg = historySort[monitor.id] || { key: 'days' as HistorySortKey, dir: 'desc' as SortDir };
+                    const toggle = (key: HistorySortKey) => setHistorySort((prev) => {
+                      const cur = prev[monitor.id];
+                      const dir: SortDir = cur?.key === key && cur.dir === 'desc' ? 'asc' : 'desc';
+                      return { ...prev, [monitor.id]: { key, dir } };
+                    });
+                    const sortFn = (a: HistoryEntry, b: HistoryEntry) => {
+                      let av = 0, bv = 0;
+                      if (cfg.key === 'price') { av = parseNumber(a.price); bv = parseNumber(b.price); }
+                      else if (cfg.key === 'mileage') { av = parseNumber(a.mileage); bv = parseNumber(b.mileage); }
+                      else { av = daysListed(a); bv = daysListed(b); }
+                      return cfg.dir === 'asc' ? av - bv : bv - av;
+                    };
+                    const goneSorted = [...soldOrGone].sort(sortFn);
+                    const activeSorted = history.filter((h) => !h.removedAt).sort(sortFn);
+                    const SortHead = ({ k, label }: { k: HistorySortKey; label: string }) => (
+                      <TableHead className="cursor-pointer hover:bg-muted/50 select-none" onClick={() => toggle(k)}>
+                        <div className="flex items-center gap-1">{label}
+                          {cfg.key === k ? (cfg.dir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                        </div>
+                      </TableHead>
+                    );
+                    return (
+                      <ResizableSheet
+                        storageKey={`cw_history_w_${monitor.id}`}
+                        defaultWidth={Math.round((typeof window !== 'undefined' ? window.innerWidth : 1200) * 0.5)}
+                        title={<>Histórico — {monitor.name}</>}
+                        trigger={
+                          <Button variant="outline" size="sm">
+                            <HistoryIcon className="h-4 w-4" /> Histórico
+                            {soldOrGone.length > 0 && <Badge variant="secondary" className="ml-1">{soldOrGone.length}</Badge>}
+                          </Button>
+                        }
+                      >
+                        <div className="mb-4 flex justify-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { clearHistory(monitor.id); setHistoryByMonitor((p) => ({ ...p, [monitor.id]: [] })); toast.success('Histórico limpo'); }}
+                          >
+                            Limpar histórico
+                          </Button>
+                        </div>
+                        {history.length === 0 ? (
+                          <p className="text-muted-foreground mt-6">Nenhum anúncio registrado ainda. Execute uma verificação.</p>
+                        ) : (
+                          <>
+                            <h4 className="font-semibold mt-2 mb-2">Saíram das buscas ({goneSorted.length})</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Anúncio</TableHead>
+                                  <SortHead k="price" label="Preço" />
+                                  <SortHead k="mileage" label="KM" />
+                                  <SortHead k="days" label="Dias no ar" />
+                                  <TableHead>Saiu em</TableHead>
+                                  <TableHead>Obs.</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                              </TableHeader>
+                              <TableBody>
+                                {goneSorted.map((h, i) => (
+                                  <TableRow key={`gone-${i}`}>
+                                    <TableCell><Badge variant="outline">{siteLabel(h.site)}</Badge></TableCell>
+                                    <TableCell className="max-w-[280px] truncate">
+                                      <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                        {h.title || h.url}
+                                      </a>
+                                    </TableCell>
+                                    <TableCell>{h.price || '-'}</TableCell>
+                                    <TableCell>{h.mileage || '-'}</TableCell>
+                                    <TableCell>{daysListed(h)}</TableCell>
+                                    <TableCell className="text-xs">{h.removedAt ? format(new Date(h.removedAt), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : '-'}</TableCell>
+                                    <TableCell><ListingNote url={h.url} site={h.site} /></TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
 
-                          <h4 className="font-semibold mt-6 mb-2">Ativos rastreados ({history.length - soldOrGone.length})</h4>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Site</TableHead>
-                                <TableHead>Anúncio</TableHead>
-                                <TableHead>Preço</TableHead>
-                                <TableHead>Dias no ar</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {history.filter((h) => !h.removedAt).map((h, i) => (
-                                <TableRow key={`act-${i}`}>
-                                  <TableCell><Badge variant="outline">{siteLabel(h.site)}</Badge></TableCell>
-                                  <TableCell className="max-w-[220px] truncate">
-                                    <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                      {h.title || h.url}
-                                    </a>
-                                  </TableCell>
-                                  <TableCell>{h.price || '-'}</TableCell>
-                                  <TableCell>{daysListed(h)}</TableCell>
+                            <h4 className="font-semibold mt-6 mb-2">Ativos rastreados ({activeSorted.length})</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Anúncio</TableHead>
+                                  <SortHead k="price" label="Preço" />
+                                  <SortHead k="mileage" label="KM" />
+                                  <SortHead k="days" label="Dias no ar" />
+                                  <TableHead>Obs.</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </>
-                      )}
-                    </SheetContent>
-                  </Sheet>
+                              </TableHeader>
+                              <TableBody>
+                                {activeSorted.map((h, i) => (
+                                  <TableRow key={`act-${i}`}>
+                                    <TableCell><Badge variant="outline">{siteLabel(h.site)}</Badge></TableCell>
+                                    <TableCell className="max-w-[280px] truncate">
+                                      <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                        {h.title || h.url}
+                                      </a>
+                                    </TableCell>
+                                    <TableCell>{h.price || '-'}</TableCell>
+                                    <TableCell>{h.mileage || '-'}</TableCell>
+                                    <TableCell>{daysListed(h)}</TableCell>
+                                    <TableCell><ListingNote url={h.url} site={h.site} /></TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </>
+                        )}
+                      </ResizableSheet>
+                    );
+                  })()}
+
 
                   <Sheet>
                     <SheetTrigger asChild>
@@ -473,6 +518,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                                       {listing.title || 'Ver anúncio'}
                                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                     </a>
+                                    <ListingNote url={listing.url} site={listing.site} />
                                     <Button variant="ghost" size="sm" onClick={() => removeListing(`${listing.url}-${listing.site}`)} className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
                                       <X className="h-3 w-3" />
                                     </Button>
@@ -543,6 +589,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                                       {listing.title || listing.url}
                                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                     </a>
+                                    <ListingNote url={listing.url} site={listing.site} />
                                     <Button variant="ghost" size="sm" onClick={() => removeListing(`${listing.url}-${listing.site}`)} className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
                                       <X className="h-3 w-3" />
                                     </Button>
