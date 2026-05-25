@@ -58,6 +58,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, HistoryEntry[]>>({});
   const [editingIntervalFor, setEditingIntervalFor] = useState<string | null>(null);
   const [intervalDraft, setIntervalDraft] = useState<string>('24');
+  const [historySort, setHistorySort] = useState<Record<string, { key: HistorySortKey; dir: SortDir }>>({});
   const [, forceTick] = useState(0);
 
   const checkingRef = useRef<string | null>(null);
