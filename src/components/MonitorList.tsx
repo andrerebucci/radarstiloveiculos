@@ -589,6 +589,7 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
                                       {listing.title || listing.url}
                                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                     </a>
+                                    <ListingNote url={listing.url} site={listing.site} />
                                     <Button variant="ghost" size="sm" onClick={() => removeListing(`${listing.url}-${listing.site}`)} className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
                                       <X className="h-3 w-3" />
                                     </Button>
