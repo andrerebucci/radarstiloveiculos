@@ -13,6 +13,16 @@ import { differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { loadHistory, reconcileHistory, daysListed, clearHistory } from '../utils/history';
+import { ResizableSheet } from './ResizableSheet';
+import { ListingNote } from './ListingNote';
+
+type HistorySortKey = 'price' | 'mileage' | 'days';
+type SortDir = 'asc' | 'desc';
+
+function parseNumber(s?: string) {
+  if (!s) return 0;
+  return parseFloat(s.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+}
 
 const STORAGE_KEY = 'cw_monitors_v1';
 
