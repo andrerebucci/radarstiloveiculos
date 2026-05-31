@@ -7,20 +7,158 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          id: string
+          email: string | null
+          display_name: string | null
+          avatar_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email?: string | null
+          display_name?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          display_name?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      monitors: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          urls: Json
+          refresh_interval_hours: number
+          last_checked_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          urls?: Json
+          refresh_interval_hours?: number
+          last_checked_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          urls?: Json
+          refresh_interval_hours?: number
+          last_checked_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      listings: {
+        Row: {
+          id: string
+          monitor_id: string
+          user_id: string
+          url: string
+          site: string
+          title: string | null
+          price: string | null
+          mileage: string | null
+          location: string | null
+          first_seen_at: string
+          last_seen_at: string
+          removed_at: string | null
+          note: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          monitor_id: string
+          user_id: string
+          url: string
+          site: string
+          title?: string | null
+          price?: string | null
+          mileage?: string | null
+          location?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          removed_at?: string | null
+          note?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          monitor_id?: string
+          user_id?: string
+          url?: string
+          site?: string
+          title?: string | null
+          price?: string | null
+          mileage?: string | null
+          location?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          removed_at?: string | null
+          note?: string | null
+          created_at?: string
+        }
+      }
+      notes: {
+        Row: {
+          id: string
+          listing_id: string
+          user_id: string
+          note: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          listing_id: string
+          user_id: string
+          note: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          listing_id?: string
+          user_id?: string
+          note?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      handle_new_user: {
+        Args: Record<string, never>
+        Returns: unknown
+      }
+      update_updated_at: {
+        Args: Record<string, never>
+        Returns: unknown
+      }
     }
     Enums: {
       [_ in never]: never
@@ -57,7 +195,7 @@ export type Tables<
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
         DefaultSchema["Views"])
     ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        DefaultSchema["Views"][DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
