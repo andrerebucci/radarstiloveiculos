@@ -1,11 +1,10 @@
 import { Monitor, SiteKey, HistoryEntry } from '../types/monitor';
-import { DataService } from '../services/DataService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ExternalLink, Play, Trash2, CircleAlert as AlertCircle, Clock, Bug, ArrowUpDown, Search, ChevronUp, ChevronDown, X, History as HistoryIcon, RefreshCw, Save } from 'lucide-react';
+import { ExternalLink, Play, Trash2, AlertCircle, Clock, Bug, ArrowUpDown, Search, ChevronUp, ChevronDown, X, History as HistoryIcon, RefreshCw, Save } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { ClientScraper } from '../utils/ClientScraper';
@@ -49,9 +48,7 @@ function formatRemaining(ms: number) {
   return `${m}m`;
 }
 
-import { DataService } from '../services/DataService';
-
-const MonitorList = ({ monitors, onDelete, userId }: { monitors: Monitor[]; onDelete: (id: string) => void; userId?: string }) => {
+const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (id: string) => void }) => {
   const [checkingMonitor, setCheckingMonitor] = useState<string | null>(null);
   const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -130,11 +127,7 @@ const MonitorList = ({ monitors, onDelete, userId }: { monitors: Monitor[]; onDe
       setHistoryByMonitor(prev => ({ ...prev, [monitor.id]: updated }));
 
       // Persistir lastCheckedAt
-      if (userId) {
-        await DataService.updateMonitor(monitor.id, userId, { lastCheckedAt: new Date().toISOString() });
-      } else {
-        persistMonitorUpdate(monitor.id, { lastCheckedAt: new Date().toISOString() });
-      }
+      persistMonitorUpdate(monitor.id, { lastCheckedAt: new Date().toISOString() });
 
       const total = Object.values(resultsBySite).reduce((acc, l) => acc + l.length, 0);
       if (!opts.silent) {
@@ -228,13 +221,9 @@ const MonitorList = ({ monitors, onDelete, userId }: { monitors: Monitor[]; onDe
     });
   };
 
-  const saveIntervalEdit = async (monitor: Monitor) => {
+  const saveIntervalEdit = (monitor: Monitor) => {
     const parsed = Math.max(1, Math.min(720, parseInt(intervalDraft || '24', 10) || 24));
-    if (userId) {
-      await DataService.updateMonitor(monitor.id, userId, { refreshIntervalHours: parsed });
-    } else {
-      persistMonitorUpdate(monitor.id, { refreshIntervalHours: parsed });
-    }
+    persistMonitorUpdate(monitor.id, { refreshIntervalHours: parsed });
     setEditingIntervalFor(null);
     toast.success(`Intervalo atualizado para ${parsed}h`);
   };
