@@ -14,7 +14,128 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      history_entries: {
+        Row: {
+          created_at: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          location: string | null
+          mileage: string | null
+          monitor_id: string
+          price: string | null
+          removed_at: string | null
+          site: string
+          title: string | null
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          location?: string | null
+          mileage?: string | null
+          monitor_id: string
+          price?: string | null
+          removed_at?: string | null
+          site: string
+          title?: string | null
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          location?: string | null
+          mileage?: string | null
+          monitor_id?: string
+          price?: string | null
+          removed_at?: string | null
+          site?: string
+          title?: string | null
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "history_entries_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monitors: {
+        Row: {
+          created_at: string
+          id: string
+          last_checked_at: string | null
+          name: string
+          refresh_interval_hours: number
+          updated_at: string
+          urls: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_checked_at?: string | null
+          name: string
+          refresh_interval_hours?: number
+          updated_at?: string
+          urls?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_checked_at?: string | null
+          name?: string
+          refresh_interval_hours?: number
+          updated_at?: string
+          urls?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          created_at: string
+          id: string
+          site: string
+          text: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          site: string
+          text: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          site?: string
+          text?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
