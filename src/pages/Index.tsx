@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { ApiKeyDialog } from '@/components/ApiKeyDialog';
+import { AuthBar } from '@/components/AuthBar';
 import { MonitorForm } from '@/components/MonitorForm';
 import MonitorList from '@/components/MonitorList';
 import { useState, useEffect } from 'react';
@@ -51,8 +52,9 @@ const Index = () => {
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Cole as URLs de busca de OLX, Webmotors e Mercado Livre. Nós rastreamos periodicamente e destacamos novos anúncios.
             </p>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex flex-col items-center justify-center gap-3">
               <ApiKeyDialog />
+              <AuthBar />
             </div>
           </header>
 

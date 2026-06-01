@@ -14,10 +14,12 @@ export function loadHistory(monitorId: string): HistoryEntry[] {
 
 export function saveHistory(monitorId: string, entries: HistoryEntry[]) {
   localStorage.setItem(KEY_PREFIX + monitorId, JSON.stringify(entries));
+  window.dispatchEvent(new Event('cw_history_updated'));
 }
 
 export function clearHistory(monitorId: string) {
   localStorage.removeItem(KEY_PREFIX + monitorId);
+  window.dispatchEvent(new Event('cw_history_updated'));
 }
 
 const keyOf = (url: string, site: SiteKey) => `${site}::${url}`;
