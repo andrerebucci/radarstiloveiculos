@@ -40,6 +40,9 @@ const Index = () => {
     setMonitors(updatedMonitors);
     localStorage.setItem('cw_monitors_v1', JSON.stringify(updatedMonitors));
   };
+  if (profile && profile.status === 'pending') return <Pending email={profile.email} />;
+  if (profile && profile.status === 'rejected') return <Pending email={profile.email} />;
+
   return (
     <main className="min-h-screen bg-background">
       <Helmet>
@@ -61,6 +64,12 @@ const Index = () => {
             <div className="flex flex-col items-center justify-center gap-3">
               <ApiKeyDialog />
               <AuthBar />
+              {profile && (
+                <div className="flex gap-2 flex-wrap justify-center">
+                  <Button asChild variant="outline" size="sm"><Link to="/organizacao"><Users className="h-4 w-4 mr-1" /> Minha Organização</Link></Button>
+                  {profile.isAdmin && <Button asChild variant="outline" size="sm"><Link to="/admin"><Shield className="h-4 w-4 mr-1" /> Painel Admin</Link></Button>}
+                </div>
+              )}
             </div>
           </header>
 
