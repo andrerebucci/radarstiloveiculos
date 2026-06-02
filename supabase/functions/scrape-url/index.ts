@@ -170,9 +170,7 @@ async function fetchViaCodetabs(url: string): Promise<string> {
   return await response.text();
 }
 
-async function fetchViaFirecrawl(url: string): Promise<string> {
-  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+async function fetchViaFirecrawlWithKey(url: string, apiKey: string, label: string): Promise<string> {
 
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
   const needsStealth = /mercadolivre\.com\.br|mercadolibre\.com/.test(host);
@@ -212,6 +210,28 @@ async function fetchViaFirecrawl(url: string): Promise<string> {
       console.log('Firecrawl retry failed:', e instanceof Error ? e.message : String(e));
     }
   }
-  if (!html) throw new Error('Firecrawl returned no HTML');
+  if (!html) throw new Error(`Firecrawl ${label}: empty HTML`);
+  console.log(`Firecrawl OK via ${label} key (${html.length} chars)`);
   return html;
+}
+
+async function fetchViaFirecrawl(url: string): Promise<string> {
+  const primary = Deno.env.get('FIRECRAWL_API_KEY');
+  const backup = Deno.env.get('FIRECRAWL_API_KEY_BACKUP');
+  const keys: Array<{ key: string; label: string }> = [];
+  if (primary) keys.push({ key: primary, label: 'primary' });
+  if (backup) keys.push({ key: backup, label: 'backup' });
+  if (keys.length === 0) throw new Error('FIRECRAWL_API_KEY not configured');
+
+  let lastError: unknown = null;
+  for (const { key, label } of keys) {
+    try {
+      console.log(`Firecrawl: trying ${label} key`);
+      return await fetchViaFirecrawlWithKey(url, key, label);
+    } catch (e) {
+      lastError = e;
+      console.log(`Firecrawl ${label} failed:`, e instanceof Error ? e.message : String(e));
+    }
+  }
+  throw (lastError instanceof Error ? lastError : new Error('Firecrawl failed on all keys'));
 }
