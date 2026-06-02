@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Shield, Users } from 'lucide-react';
 
 const Index = () => {
+  const { profile, loading } = useUserProfile();
   const [monitors, setMonitors] = useState<Monitor[]>([]);
 
   // Load monitors from localStorage on mount
