@@ -1,10 +1,15 @@
 import { Helmet } from 'react-helmet-async';
+import { Link } from 'react-router-dom';
 import { ApiKeyDialog } from '@/components/ApiKeyDialog';
 import { AuthBar } from '@/components/AuthBar';
 import { MonitorForm } from '@/components/MonitorForm';
 import MonitorList from '@/components/MonitorList';
 import { useState, useEffect } from 'react';
 import { Monitor } from '@/types/monitor';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import Pending from './Pending';
+import { Button } from '@/components/ui/button';
+import { Shield, Users } from 'lucide-react';
 
 const Index = () => {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
