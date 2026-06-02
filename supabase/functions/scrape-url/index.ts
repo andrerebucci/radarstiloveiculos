@@ -170,9 +170,7 @@ async function fetchViaCodetabs(url: string): Promise<string> {
   return await response.text();
 }
 
-async function fetchViaFirecrawl(url: string): Promise<string> {
-  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+async function fetchViaFirecrawlWithKey(url: string, apiKey: string, label: string): Promise<string> {
 
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
   const needsStealth = /mercadolivre\.com\.br|mercadolibre\.com/.test(host);
