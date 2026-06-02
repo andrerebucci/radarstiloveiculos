@@ -39,10 +39,11 @@ export default function Organization() {
     // enrich with profile info
     const userIds = Array.from(new Set((memRows || []).map((m: any) => m.user_id)));
     const { data: profs } = await db.from('profiles').select('user_id,email,full_name').in('user_id', userIds);
-    const pMap = new Map((profs || []).map((p: any) => [p.user_id, p]));
+    const pMap = new Map<string, any>((profs || []).map((p: any) => [p.user_id, p]));
     const grouped: Record<string, Member[]> = {};
-    for (const m of memRows || []) {
-      const enriched = { ...m, email: pMap.get(m.user_id)?.email, full_name: pMap.get(m.user_id)?.full_name };
+    for (const m of (memRows || []) as any[]) {
+      const p = pMap.get(m.user_id);
+      const enriched: Member = { ...m, email: p?.email ?? null, full_name: p?.full_name ?? null };
       (grouped[m.org_id] ||= []).push(enriched);
     }
     setMembers(grouped);
