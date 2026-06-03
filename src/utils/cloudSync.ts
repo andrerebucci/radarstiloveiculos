@@ -49,6 +49,8 @@ export async function pushAll(userId: string) {
       refresh_interval_hours: m.refreshIntervalHours ?? 24,
       last_checked_at: m.lastCheckedAt ?? null,
       created_at: m.createdAt,
+      shared: m.shared ?? false,
+      organization_id: m.organizationId ?? null,
     }));
     await db.from('monitors').upsert(rows, { onConflict: 'id' });
   }
@@ -97,6 +99,8 @@ export async function pullAll(userId: string) {
     createdAt: r.created_at,
     refreshIntervalHours: r.refresh_interval_hours,
     lastCheckedAt: r.last_checked_at ?? undefined,
+    shared: !!r.shared,
+    organizationId: r.organization_id ?? null,
   }));
   writeLocalMonitors(monitors);
 

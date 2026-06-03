@@ -14,6 +14,10 @@ export interface Monitor {
   refreshIntervalHours?: number;
   /** ISO timestamp da última verificação executada. */
   lastCheckedAt?: string;
+  /** Se verdadeiro, o monitor é visível para todos os membros da organização. */
+  shared?: boolean;
+  /** Organização à qual o monitor pertence (quando compartilhado). */
+  organizationId?: string | null;
 }
 
 export interface Listing {
