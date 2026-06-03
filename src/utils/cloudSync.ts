@@ -49,6 +49,8 @@ export async function pushAll(userId: string) {
       refresh_interval_hours: m.refreshIntervalHours ?? 24,
       last_checked_at: m.lastCheckedAt ?? null,
       created_at: m.createdAt,
+      shared: m.shared ?? false,
+      organization_id: m.organizationId ?? null,
     }));
     await db.from('monitors').upsert(rows, { onConflict: 'id' });
   }
