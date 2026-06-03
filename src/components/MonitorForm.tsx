@@ -1,8 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import { useUserOrganizations } from '@/hooks/useUserOrganizations';
 import type { Monitor, MonitorUrl } from '@/types/monitor';
 
 interface Props {
@@ -11,11 +21,22 @@ interface Props {
 
 export const MonitorForm = ({ onAdded }: Props) => {
   const { toast } = useToast();
+  const { orgs } = useUserOrganizations();
   const [name, setName] = useState('');
   const [olx, setOlx] = useState('');
   const [wm, setWm] = useState('');
   const [ml, setMl] = useState('');
   const [intervalHours, setIntervalHours] = useState<string>('24');
+  const [shared, setShared] = useState(false);
+  const [orgId, setOrgId] = useState<string>('');
+
+  useEffect(() => {
+    if (orgs.length > 0 && !orgId) setOrgId(orgs[0].id);
+    if (orgs.length === 0) {
+      setShared(false);
+      setOrgId('');
+    }
+  }, [orgs, orgId]);
 
   const add = () => {
     const urls: MonitorUrl[] = [];
@@ -27,12 +48,15 @@ export const MonitorForm = ({ onAdded }: Props) => {
       return;
     }
     const parsedHours = Math.max(1, Math.min(720, parseInt(intervalHours || '24', 10) || 24));
+    const willShare = shared && !!orgId;
     const monitor: Monitor = {
       id: crypto.randomUUID(),
       name: name.trim(),
       urls,
       createdAt: new Date().toISOString(),
       refreshIntervalHours: parsedHours,
+      shared: willShare,
+      organizationId: willShare ? orgId : null,
     };
 
     const list: Monitor[] = JSON.parse(localStorage.getItem('cw_monitors_v1') || '[]');
@@ -41,7 +65,7 @@ export const MonitorForm = ({ onAdded }: Props) => {
     window.dispatchEvent(new Event('cw_monitors_updated'));
 
     setName(''); setOlx(''); setWm(''); setMl(''); setIntervalHours('24');
-    toast({ title: 'Monitoramento adicionado', description: 'Você já pode verificar novos anúncios.', duration: 3000 });
+    toast({ title: 'Monitoramento adicionado', description: willShare ? 'Compartilhado com a organização.' : 'Você já pode verificar novos anúncios.', duration: 3000 });
     onAdded?.(monitor);
   };
 
@@ -66,6 +90,34 @@ export const MonitorForm = ({ onAdded }: Props) => {
             onChange={(e) => setIntervalHours(e.target.value)}
           />
         </div>
+
+        {orgs.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-md border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label htmlFor="share-toggle" className="text-sm">Compartilhar com a organização</Label>
+                <p className="text-xs text-muted-foreground">Outros membros da organização poderão ver este monitor.</p>
+              </div>
+              <Switch id="share-toggle" checked={shared} onCheckedChange={setShared} />
+            </div>
+            {shared && orgs.length > 1 && (
+              <Select value={orgId} onValueChange={setOrgId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Escolha a organização" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orgs.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {shared && orgs.length === 1 && (
+              <p className="text-xs text-muted-foreground">Organização: <strong>{orgs[0].name}</strong> ({orgs[0].code})</p>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end">
           <Button variant="brand" onClick={add}>Adicionar</Button>
         </div>
