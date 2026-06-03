@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ExternalLink, Play, Trash2, AlertCircle, Clock, Bug, ArrowUpDown, Search, ChevronUp, ChevronDown, X, History as HistoryIcon, RefreshCw, Save } from 'lucide-react';
+import { ExternalLink, Play, Trash2, AlertCircle, Clock, Bug, ArrowUpDown, Search, ChevronUp, ChevronDown, X, History as HistoryIcon, RefreshCw, Save, Users } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { ClientScraper } from '../utils/ClientScraper';
