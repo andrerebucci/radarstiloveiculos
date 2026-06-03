@@ -99,6 +99,8 @@ export async function pullAll(userId: string) {
     createdAt: r.created_at,
     refreshIntervalHours: r.refresh_interval_hours,
     lastCheckedAt: r.last_checked_at ?? undefined,
+    shared: !!r.shared,
+    organizationId: r.organization_id ?? null,
   }));
   writeLocalMonitors(monitors);
 
