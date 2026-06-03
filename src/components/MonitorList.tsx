@@ -261,7 +261,14 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
           <Card key={monitor.id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                <span>{monitor.name}</span>
+                <span className="flex items-center gap-2">
+                  {monitor.name}
+                  {monitor.shared && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Users className="h-3 w-3" /> Compartilhado
+                    </Badge>
+                  )}
+                </span>
                 <div className="flex gap-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={() => checkMonitor(monitor)} disabled={checkingMonitor === monitor.id}>
                     {checkingMonitor === monitor.id ? (
