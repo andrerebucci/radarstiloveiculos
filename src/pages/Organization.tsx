@@ -52,12 +52,16 @@ export default function Organization() {
   useEffect(() => { if (profile?.userId) load(); }, [profile?.userId]);
 
   const createOrg = async () => {
-    if (!newName.trim() || !profile) return;
+    if (!newName.trim()) return;
     setBusy(true);
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) { setBusy(false); toast.error('Sessão expirada. Faça login novamente.'); return; }
     const code = genCode();
-    const { data: org, error } = await db.from('organizations').insert({ code, name: newName.trim(), owner_user_id: profile.userId }).select().single();
+    const { data: org, error } = await db.from('organizations').insert({ code, name: newName.trim(), owner_user_id: uid }).select().single();
     if (error) { setBusy(false); toast.error(error.message); return; }
-    await db.from('organization_members').insert({ org_id: org.id, user_id: profile.userId, role: 'owner' });
+    const { error: memErr } = await db.from('organization_members').insert({ org_id: org.id, user_id: uid, role: 'owner' });
+    if (memErr) { setBusy(false); toast.error(`Org criada, mas falha ao adicionar membro: ${memErr.message}`); return; }
     setBusy(false); setNewName('');
     toast.success(`Organização criada. Código: ${code}`);
     load();
