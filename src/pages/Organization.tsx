@@ -52,13 +52,13 @@ export default function Organization() {
   useEffect(() => { if (profile?.userId) load(); }, [profile?.userId]);
 
   const createOrg = async () => {
-    if (!newName.trim() || !profile) return;
+    if (!newName.trim()) return;
     setBusy(true);
     const code = genCode();
-    const { data: org, error } = await db.from('organizations').insert({ code, name: newName.trim(), owner_user_id: profile.userId }).select().single();
-    if (error) { setBusy(false); toast.error(error.message); return; }
-    await db.from('organization_members').insert({ org_id: org.id, user_id: profile.userId, role: 'owner' });
-    setBusy(false); setNewName('');
+    const { data, error } = await db.rpc('create_organization', { _name: newName.trim(), _code: code });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    setNewName('');
     toast.success(`Organização criada. Código: ${code}`);
     load();
   };
