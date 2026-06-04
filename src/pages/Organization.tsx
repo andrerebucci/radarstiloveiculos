@@ -66,12 +66,12 @@ export default function Organization() {
   const joinOrg = async () => {
     if (!joinCode.trim() || !profile) return;
     setBusy(true);
-    const { data: org } = await db.from('organizations').select('id,code,name,owner_user_id').eq('code', joinCode.trim().toUpperCase()).maybeSingle();
-    if (!org) { setBusy(false); toast.error('Código não encontrado'); return; }
-    const { error } = await db.from('organization_members').insert({ org_id: org.id, user_id: profile.userId, role: 'member' });
+    const { data: org, error } = await db.rpc('join_organization_by_code', { _code: joinCode.trim().toUpperCase() });
     setBusy(false);
-    if (error) toast.error(error.message);
-    else { toast.success(`Você entrou em ${org.name}`); setJoinCode(''); load(); }
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Você entrou em ${org?.name ?? 'organização'}`);
+    setJoinCode('');
+    load();
   };
 
   const leaveOrg = async (orgId: string) => {
