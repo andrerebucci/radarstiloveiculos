@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
-
-const db = supabase as any;
 
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
@@ -19,7 +17,7 @@ export function useUserProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async (userId = user?.id, userEmail = user?.email ?? null) => {
+  const load = useCallback(async (userId = user?.id, userEmail = user?.email ?? null) => {
     setLoading(true);
     if (!userId) {
       setProfile(null);
@@ -27,23 +25,23 @@ export function useUserProfile() {
       return;
     }
     const [{ data: p }, { data: roles }] = await Promise.all([
-      db.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
-      db.from('user_roles').select('role').eq('user_id', userId),
+      supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+      supabase.from('user_roles').select('role').eq('user_id', userId),
     ]);
     setProfile({
       userId,
       email: userEmail,
       fullName: p?.full_name ?? null,
       status: (p?.status as UserStatus) ?? 'pending',
-      isAdmin: !!(roles || []).find((r: any) => r.role === 'admin'),
+      isAdmin: !!(roles || []).find((r) => r.role === 'admin'),
     });
     setLoading(false);
-  };
+  }, [user?.id, user?.email]);
 
   useEffect(() => {
     if (!ready) return;
     load(user?.id, user?.email ?? null);
-  }, [ready, user?.id, user?.email]);
+  }, [ready, user?.id, user?.email, load]);
 
   return { profile, loading, reload: load };
 }
