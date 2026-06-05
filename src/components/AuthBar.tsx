@@ -16,23 +16,16 @@ export const AuthBar = () => {
   const initialSyncDone = useRef(false);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setEmail(session?.user?.email ?? null);
-      if (session && !initialSyncDone.current) {
-        initialSyncDone.current = true;
-        await runSync(true);
-      }
       if (!session) initialSyncDone.current = false;
     });
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       setEmail(data.session?.user?.email ?? null);
-      if (data.session && !initialSyncDone.current) {
-        initialSyncDone.current = true;
-        await runSync(true);
-      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
 
   // Auto-push on local changes (debounced) when logged in
   useEffect(() => {
