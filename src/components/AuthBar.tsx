@@ -1,30 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { downloadBackup, importBackupFile, syncNow, getLastSync } from '@/utils/cloudSync';
-import { Cloud, CloudOff, Download, Upload, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { Cloud, CloudOff, Download, Upload, LogIn, LogOut, RefreshCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export const AuthBar = () => {
-  const nav = useNavigate();
+  const { ready, user } = useAuthReady();
   const [email, setEmail] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(getLastSync());
   const fileRef = useRef<HTMLInputElement>(null);
-  const initialSyncDone = useRef(false);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setEmail(session?.user?.email ?? null);
-      if (!session) initialSyncDone.current = false;
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      setEmail(data.session?.user?.email ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    if (!ready) return;
+    setEmail(user?.email ?? null);
+  }, [ready, user?.email]);
 
 
   // Auto-push on local changes (debounced) when logged in
@@ -78,6 +72,9 @@ export const AuthBar = () => {
       {email ? (
         <>
           <Badge variant="secondary" className="gap-1"><Cloud className="h-3 w-3" /> {email}</Badge>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/organizacao"><Users className="h-4 w-4" /> Minha Organização</Link>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => runSync(false)} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             Sincronizar
