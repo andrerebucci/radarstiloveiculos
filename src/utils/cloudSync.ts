@@ -133,15 +133,22 @@ export async function pullAll(userId: string) {
 export async function syncNow(): Promise<{ ok: boolean; error?: string }> {
   const userId = await getCurrentUserId();
   if (!userId) return { ok: false, error: 'Não autenticado' };
-  try {
-    await pushAll(userId);
-    await pullAll(userId);
-    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
+  const timeout = new Promise<{ ok: false; error: string }>((resolve) =>
+    setTimeout(() => resolve({ ok: false, error: 'Tempo esgotado (60s)' }), 60000)
+  );
+  const work = (async () => {
+    try {
+      await pushAll(userId);
+      await pullAll(userId);
+      localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, error: e?.message || String(e) };
+    }
+  })();
+  return Promise.race([work, timeout]);
 }
+
 
 export function getLastSync(): string | null {
   return localStorage.getItem(LAST_SYNC_KEY);
