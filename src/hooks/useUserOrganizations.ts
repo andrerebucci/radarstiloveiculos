@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 const db = supabase as any;
 
@@ -10,14 +11,13 @@ export interface UserOrg {
 }
 
 export function useUserOrganizations() {
+  const { ready, user } = useAuthReady();
   const [orgs, setOrgs] = useState<UserOrg[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = async (userId = user?.id) => {
     setLoading(true);
-    const { data: sess } = await supabase.auth.getSession();
-    const user = sess.session?.user;
-    if (!user) {
+    if (!userId) {
       setOrgs([]);
       setLoading(false);
       return;
@@ -25,7 +25,7 @@ export function useUserOrganizations() {
     const { data: memberships } = await db
       .from('organization_members')
       .select('org_id')
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
     const ids = (memberships || []).map((m: any) => m.org_id);
     if (ids.length === 0) {
       setOrgs([]);
@@ -41,10 +41,9 @@ export function useUserOrganizations() {
   };
 
   useEffect(() => {
-    load();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => load());
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    if (!ready) return;
+    load(user?.id);
+  }, [ready, user?.id]);
 
   return { orgs, loading, reload: load };
 }
