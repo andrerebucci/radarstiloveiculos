@@ -267,12 +267,62 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
           <Card key={monitor.id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 flex-wrap">
                   {monitor.name}
                   {monitor.shared && (
                     <Badge variant="secondary" className="gap-1">
                       <Users className="h-3 w-3" /> Compartilhado
                     </Badge>
+                  )}
+                  {orgs.length > 0 && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                          <Users className="h-3 w-3 mr-1" />
+                          {monitor.shared ? 'Editar compartilhamento' : 'Compartilhar'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="start">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor={`share-${monitor.id}`} className="text-sm">Compartilhar com a organização</Label>
+                            <Switch
+                              id={`share-${monitor.id}`}
+                              checked={!!monitor.shared}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  const orgId = monitor.organizationId || orgs[0].id;
+                                  persistMonitorUpdate(monitor.id, { shared: true, organizationId: orgId });
+                                  toast.success('Monitor compartilhado com a organização');
+                                } else {
+                                  persistMonitorUpdate(monitor.id, { shared: false, organizationId: null });
+                                  toast.success('Monitor agora é privado');
+                                }
+                              }}
+                            />
+                          </div>
+                          {monitor.shared && orgs.length > 1 && (
+                            <Select
+                              value={monitor.organizationId || orgs[0].id}
+                              onValueChange={(v) => {
+                                persistMonitorUpdate(monitor.id, { organizationId: v });
+                                toast.success('Organização atualizada');
+                              }}
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {orgs.map((o) => (
+                                  <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {monitor.shared && orgs.length === 1 && (
+                            <p className="text-xs text-muted-foreground">Organização: <strong>{orgs[0].name}</strong> ({orgs[0].code})</p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </span>
                 <div className="flex gap-2 flex-wrap">
