@@ -57,14 +57,25 @@ export class MercadoLivreParser {
       'ol.ui-search-layout li',
     ];
 
-    let items: Element[] = [];
+    // Collect items from ALL selectors and dedupe by URL — ML sometimes mixes
+    // layouts (e.g., poly-card vs ui-search-layout__item) and one item can sit
+    // outside the primary container.
+    const itemSet = new Set<Element>();
     for (const selector of containerSelectors) {
-      items = Array.from(doc.querySelectorAll(selector));
-      if (items.length > 0) {
-        console.log(`ML DOM: Found ${items.length} items with "${selector}"`);
-        break;
+      const found = Array.from(doc.querySelectorAll(selector));
+      if (found.length > 0) {
+        console.log(`ML DOM: "${selector}" matched ${found.length}`);
+        for (const el of found) itemSet.add(el);
       }
     }
+    // Drop items that are descendants of another collected item (avoid double counting)
+    let items: Element[] = Array.from(itemSet).filter((el) => {
+      for (const other of itemSet) {
+        if (other !== el && other.contains(el)) return false;
+      }
+      return true;
+    });
+    console.log(`ML DOM: ${items.length} unique containers after merge`);
 
     // If no container found, try finding all links with MLB
     if (items.length === 0) {
@@ -83,7 +94,7 @@ export class MercadoLivreParser {
 
         const listing = this.extractListingFromContext(link, url);
         if (listing) listings.push(listing);
-        if (listings.length >= 20) break;
+        if (listings.length >= 50) break;
       }
       return listings;
     }
