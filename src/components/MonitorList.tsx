@@ -12,9 +12,14 @@ import { extractListingsFromHtml, ParsedListing } from '../utils/parsers';
 import { differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
+import { Switch } from './ui/switch';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { loadHistory, reconcileHistory, daysListed, clearHistory } from '../utils/history';
 import { ResizableSheet } from './ResizableSheet';
 import { ListingNote } from './ListingNote';
+import { useUserOrganizations } from '@/hooks/useUserOrganizations';
 
 type HistorySortKey = 'price' | 'mileage' | 'days';
 type SortDir = 'asc' | 'desc';
@@ -49,6 +54,7 @@ function formatRemaining(ms: number) {
 }
 
 const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (id: string) => void }) => {
+  const { orgs } = useUserOrganizations();
   const [checkingMonitor, setCheckingMonitor] = useState<string | null>(null);
   const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -261,12 +267,62 @@ const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (i
           <Card key={monitor.id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 flex-wrap">
                   {monitor.name}
                   {monitor.shared && (
                     <Badge variant="secondary" className="gap-1">
                       <Users className="h-3 w-3" /> Compartilhado
                     </Badge>
+                  )}
+                  {orgs.length > 0 && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                          <Users className="h-3 w-3 mr-1" />
+                          {monitor.shared ? 'Editar compartilhamento' : 'Compartilhar'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="start">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor={`share-${monitor.id}`} className="text-sm">Compartilhar com a organização</Label>
+                            <Switch
+                              id={`share-${monitor.id}`}
+                              checked={!!monitor.shared}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  const orgId = monitor.organizationId || orgs[0].id;
+                                  persistMonitorUpdate(monitor.id, { shared: true, organizationId: orgId });
+                                  toast.success('Monitor compartilhado com a organização');
+                                } else {
+                                  persistMonitorUpdate(monitor.id, { shared: false, organizationId: null });
+                                  toast.success('Monitor agora é privado');
+                                }
+                              }}
+                            />
+                          </div>
+                          {monitor.shared && orgs.length > 1 && (
+                            <Select
+                              value={monitor.organizationId || orgs[0].id}
+                              onValueChange={(v) => {
+                                persistMonitorUpdate(monitor.id, { organizationId: v });
+                                toast.success('Organização atualizada');
+                              }}
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {orgs.map((o) => (
+                                  <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {monitor.shared && orgs.length === 1 && (
+                            <p className="text-xs text-muted-foreground">Organização: <strong>{orgs[0].name}</strong> ({orgs[0].code})</p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </span>
                 <div className="flex gap-2 flex-wrap">
