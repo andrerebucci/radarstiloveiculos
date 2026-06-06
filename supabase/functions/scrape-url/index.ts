@@ -26,21 +26,28 @@ Deno.serve(async (req) => {
     const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
     const needsJs = /webmotors\.com\.br|mercadolivre\.com\.br|mercadolibre\.com/.test(host);
 
-    const baseMethods: Array<{ name: string; fn: () => Promise<string> }> = [
-      { name: 'direct', fn: () => fetchDirect(url) },
-      { name: 'direct-mobile', fn: () => fetchDirectMobile(url) },
-      { name: 'allorigins-raw', fn: () => fetchViaAllorigins(url) },
-      { name: 'allorigins-json', fn: () => fetchViaAlloriginsJson(url) },
-      { name: 'codetabs', fn: () => fetchViaCodetabs(url) },
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+        p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+      });
+
+    const baseMethods: Array<{ name: string; fn: () => Promise<string>; timeout: number }> = [
+      { name: 'direct', fn: () => fetchDirect(url), timeout: 10_000 },
+      { name: 'direct-mobile', fn: () => fetchDirectMobile(url), timeout: 10_000 },
+      { name: 'allorigins-raw', fn: () => fetchViaAllorigins(url), timeout: 12_000 },
+      { name: 'allorigins-json', fn: () => fetchViaAlloriginsJson(url), timeout: 12_000 },
+      { name: 'codetabs', fn: () => fetchViaCodetabs(url), timeout: 12_000 },
     ];
-    const firecrawlMethod = { name: 'firecrawl', fn: () => fetchViaFirecrawl(url) };
-    // For SPAs (Webmotors/ML) try Firecrawl first since plain fetches are unreliable
-    const methods = needsJs ? [firecrawlMethod, ...baseMethods] : [...baseMethods, firecrawlMethod];
+    const firecrawlMethod = { name: 'firecrawl', fn: () => fetchViaFirecrawl(url), timeout: 45_000 };
+    // For SPAs (Webmotors/ML) AND OLX (plain fetches consistently 403), prefer Firecrawl first.
+    const preferFirecrawl = needsJs || /olx\.com\.br/.test(host);
+    const methods = preferFirecrawl ? [firecrawlMethod, ...baseMethods] : [...baseMethods, firecrawlMethod];
 
     let lastError = '';
     for (const m of methods) {
       try {
-        const html = await m.fn();
+        const html = await withTimeout(m.fn(), m.timeout, m.name);
         if (!html || html.length < 5000) {
           lastError = `${m.name}: response too small (${html?.length || 0} chars)`;
           console.log(lastError);
