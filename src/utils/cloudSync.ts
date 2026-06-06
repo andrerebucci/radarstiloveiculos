@@ -91,7 +91,8 @@ export async function pushAll(userId: string) {
 
 /** Pull everything from cloud into local storage (cloud-wins for items present in cloud). */
 export async function pullAll(userId: string) {
-  const { data: monitorsRemote } = await db.from('monitors').select('*').eq('user_id', userId);
+  // RLS already filters to own + shared org monitors, so no user_id filter here
+  const { data: monitorsRemote } = await db.from('monitors').select('*');
   const monitors: Monitor[] = (monitorsRemote || []).map((r: any) => ({
     id: r.id,
     name: r.name,
@@ -104,7 +105,8 @@ export async function pullAll(userId: string) {
   }));
   writeLocalMonitors(monitors);
 
-  const { data: historyRemote } = await db.from('history_entries').select('*').eq('user_id', userId);
+  // RLS allows reading shared monitor history too
+  const { data: historyRemote } = await db.from('history_entries').select('*');
   const byMonitor = new Map<string, HistoryEntry[]>();
   for (const r of historyRemote || []) {
     const arr = byMonitor.get(r.monitor_id) || [];
