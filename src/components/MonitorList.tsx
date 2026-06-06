@@ -12,9 +12,14 @@ import { extractListingsFromHtml, ParsedListing } from '../utils/parsers';
 import { differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
+import { Switch } from './ui/switch';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { loadHistory, reconcileHistory, daysListed, clearHistory } from '../utils/history';
 import { ResizableSheet } from './ResizableSheet';
 import { ListingNote } from './ListingNote';
+import { useUserOrganizations } from '@/hooks/useUserOrganizations';
 
 type HistorySortKey = 'price' | 'mileage' | 'days';
 type SortDir = 'asc' | 'desc';
