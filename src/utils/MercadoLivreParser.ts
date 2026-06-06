@@ -153,7 +153,7 @@ export class MercadoLivreParser {
 
 
       listings.push(listing);
-      if (listings.length >= 20) break;
+      if (listings.length >= 50) break;
     }
 
     return listings;
