@@ -54,6 +54,7 @@ function formatRemaining(ms: number) {
 }
 
 const MonitorList = ({ monitors, onDelete }: { monitors: Monitor[]; onDelete: (id: string) => void }) => {
+  const { orgs } = useUserOrganizations();
   const [checkingMonitor, setCheckingMonitor] = useState<string | null>(null);
   const [lastResults, setLastResults] = useState<Record<string, Record<SiteKey, ParsedListing[]>>>({});
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
