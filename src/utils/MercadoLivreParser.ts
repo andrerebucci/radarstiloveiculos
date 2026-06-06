@@ -205,7 +205,7 @@ export class MercadoLivreParser {
     const mlbPattern = /href="([^"]*MLB[- ]?\d+[^"]*)"/gi;
     let match;
     
-    while ((match = mlbPattern.exec(html)) !== null && listings.length < 20) {
+    while ((match = mlbPattern.exec(html)) !== null && listings.length < 50) {
       const rawUrl = match[1];
       if (this.isTrackingUrl(rawUrl)) continue;
       
